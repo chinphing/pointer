@@ -4,6 +4,7 @@ Adds: raw screenshot, annotated screenshot (with L-R T-B indices), and optionall
 a 2x zoomed region when user or model specified an area (top_left, top_right, bottom_right, bottom_left, or center).
 Also builds index_map (screen coordinates) for vision_actions tools.
 Saves each image under agents/computer/snapshots/<context_id>/ for debugging.
+Only the latest screen inject is sent to the LLM; earlier ones are replaced with a text placeholder to reduce token usage.
 """
 from __future__ import annotations
 
@@ -94,6 +95,32 @@ def _pil_to_base64_jpeg(pil_img: Image.Image, quality: int = 85) -> str:
     return base64.b64encode(buf.getvalue()).decode("utf-8")
 
 
+SCREEN_INJECT_PREVIEW = "<screen images>"
+
+
+def _replace_older_screen_injects_with_placeholder(
+    history_output: List[history.OutputMessage],
+    keep_last: bool = True,
+) -> None:
+    """Replace screen-inject messages with text-only placeholder to reduce tokens.
+    If keep_last is True, only the last screen inject is kept; otherwise all are replaced.
+    """
+    if not history_output:
+        return
+    indices: List[int] = []
+    for i, out in enumerate(history_output):
+        content = out.get("content")
+        if isinstance(content, dict) and content.get("preview") == SCREEN_INJECT_PREVIEW:
+            indices.append(i)
+    to_replace = indices[:-1] if keep_last and indices else indices
+    placeholder = history.RawMessage(
+        raw_content=[{"type": "text", "text": "[Previous screen omitted to save tokens.]"}],
+        preview="[Previous screen omitted]",
+    )
+    for i in to_replace:
+        history_output[i] = history.OutputMessage(ai=False, content=placeholder)
+
+
 def _save_snapshots(
     context_id: str,
     raw_img: Image.Image,
@@ -130,6 +157,7 @@ class ComputerScreenInject(Extension):
             err_msg = f"Screen capture failed: {e}"
             raw = history.RawMessage(raw_content=[{"type": "text", "text": err_msg}], preview=err_msg)
             loop_data.history_output.append(history.OutputMessage(ai=False, content=raw))
+            _replace_older_screen_injects_with_placeholder(loop_data.history_output, keep_last=False)
             return
 
         mon_left, mon_top, mon_width, mon_height = mon_bbox
@@ -195,5 +223,6 @@ class ComputerScreenInject(Extension):
         context_id = getattr(self.agent.context, "id", None) or "default"
         _save_snapshots(context_id, img, annotated_img, zoomed_for_snapshot)
 
-        raw = history.RawMessage(raw_content=content, preview="<screen images>")
+        raw = history.RawMessage(raw_content=content, preview=SCREEN_INJECT_PREVIEW)
         loop_data.history_output.append(history.OutputMessage(ai=False, content=raw))
+        _replace_older_screen_injects_with_placeholder(loop_data.history_output)

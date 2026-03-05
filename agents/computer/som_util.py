@@ -19,7 +19,7 @@ def sort_boxes_lrtb(
     boxes = list(boxes)
     if not boxes:
         return []
-    cell_h = max(height // 4, 20)
+    cell_h = 20
 
     def row_key(box: Sequence[float]) -> Tuple[int, float]:
         x1, y1, x2, y2 = float(box[0]), float(box[1]), float(box[2]), float(box[3])

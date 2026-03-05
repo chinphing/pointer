@@ -1,0 +1,5 @@
+{
+  "title": "ComputerUse",
+  "description": "Agent that operates the computer via vision: uses screenshots and annotated UI element indices to click, type, and navigate. Distinct from the browser_agent tool (Playwright/in-process); ComputerUse controls the real screen/desktop.",
+  "context": "Use this profile for screen-based tasks: real desktop UI, any visible window (including browser windows as pixels), and visual understanding of the current monitor. Not for the headless browser_agent tool."
+}

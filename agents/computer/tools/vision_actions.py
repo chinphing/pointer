@@ -18,10 +18,26 @@ if _COMPUTER_DIR not in sys.path:
     sys.path.insert(0, _COMPUTER_DIR)
 
 from actions import ActionTools  # noqa: E402
+from coord_convert import normalized_to_screen  # noqa: E402
+
+
+LAST_VISION_ACTION_KEY = "computer_last_vision_action"
 
 
 class VisionActionsTool(Tool):
     """Execute vision_actions by index (click_index, double_click_index, type_text_at_index)."""
+
+    async def after_execution(self, response: Response, **kwargs: Any) -> None:
+        self.agent.set_data(
+            LAST_VISION_ACTION_KEY,
+            {
+                "tool": self.name,
+                "method": self.method or "",
+                "args": dict(self.args or {}),
+                "result": (response.message or "").strip(),
+            },
+        )
+        await super().after_execution(response, **kwargs)
 
     def _resolve_index(
         self, index_map: Dict[int, Dict[str, float]], index: int
@@ -38,6 +54,25 @@ class VisionActionsTool(Tool):
         except (KeyError, TypeError, ValueError) as e:
             raise ValueError(f"Invalid index_map entry for index {index}: {e}.") from e
         return [x, y]
+
+    def _resolve_coord(self, x_val: float, y_val: float) -> List[int]:
+        """将模型给出的归一化坐标 (x, y) 转为屏幕像素 [sx, sy]。"""
+        screen_info = self.agent.get_data("computer_vision_screen_info") or {}
+        w = screen_info.get("width")
+        h = screen_info.get("height")
+        mon_left = screen_info.get("mon_left", 0)
+        mon_top = screen_info.get("mon_top", 0)
+        if w is None or h is None:
+            raise ValueError(
+                "No screen info. Ensure the computer screen inject ran for this turn."
+            )
+        system = getattr(
+            self.agent.config, "vision_coordinate_system", "qwen"
+        )  # qwen: 1000×1000, kimi: 1×1
+        sx, sy = normalized_to_screen(
+            float(x_val), float(y_val), system, int(w), int(h), int(mon_left), int(mon_top)
+        )
+        return [sx, sy]
 
     def _infer_method(self, args: Dict[str, Any]) -> str:
         if "text" in args and args.get("text") is not None:
@@ -70,25 +105,115 @@ class VisionActionsTool(Tool):
                 return Response(message=result, break_loop=False)
             except Exception as e:
                 return Response(message=str(e), break_loop=False)
-        if method == "scroll":
-            amount_arg = args.get("amount")
-            if amount_arg is None:
+        if method == "wait":
+            sec_arg = args.get("seconds")
+            if sec_arg is None:
                 return Response(
-                    message="Missing 'amount' in tool_args (positive=up, negative=down).",
+                    message="Missing 'seconds' in tool_args.",
                     break_loop=False,
                 )
             try:
-                amount = int(amount_arg)
+                sec = float(sec_arg)
             except (TypeError, ValueError):
                 return Response(
-                    message=f"Invalid 'amount' value: {amount_arg}.",
+                    message=f"Invalid 'seconds' value: {sec_arg}.",
+                    break_loop=False,
+                )
+            if sec < 0 or sec > 60:
+                return Response(
+                    message="Seconds must be between 0 and 60.",
                     break_loop=False,
                 )
             try:
-                result = actions._scroll(amount)
+                result = actions._wait(sec)
                 return Response(message=result, break_loop=False)
             except Exception as e:
                 return Response(message=str(e), break_loop=False)
+        if method == "close_popup":
+            popup_method = args.get("method", "esc")
+            if popup_method == "esc":
+                try:
+                    result = actions._close_popup(method="esc")
+                    return Response(message=result, break_loop=False)
+                except Exception as e:
+                    return Response(message=str(e), break_loop=False)
+            if popup_method in ("click_close", "click_cancel", "click_ok"):
+                index_map_popup = self.agent.get_data("computer_vision_index_map") or {}
+                if not index_map_popup:
+                    return Response(
+                        message="No index_map for close_popup click. Use method=esc or ensure screen inject ran.",
+                        break_loop=False,
+                    )
+                idx_arg = args.get("index")
+                if idx_arg is None:
+                    return Response(
+                        message="Missing 'index' for close_popup click (the button to click).",
+                        break_loop=False,
+                    )
+                try:
+                    idx = int(idx_arg)
+                    pos = self._resolve_index(index_map_popup, idx)
+                    result = actions._close_popup(method=popup_method, position=pos)
+                    return Response(message=result, break_loop=False)
+                except (ValueError, TypeError) as e:
+                    return Response(message=str(e), break_loop=False)
+            return Response(
+                message="close_popup method must be 'esc' or 'click_close'/'click_cancel'/'click_ok'.",
+                break_loop=False,
+            )
+
+        # Coordinate-based methods (when target has no index): x, y in model's native system
+        def _get_xy_and_convert():
+            x_arg, y_arg = args.get("x"), args.get("y")
+            if x_arg is None or y_arg is None:
+                return None, "Missing 'x' or 'y' in tool_args for coordinate-based action."
+            try:
+                pos = self._resolve_coord(float(x_arg), float(y_arg))
+                return pos, None
+            except ValueError as e:
+                return None, str(e)
+
+        if method == "click_at":
+            pos, err = _get_xy_and_convert()
+            if err:
+                return Response(message=err, break_loop=False)
+            result = actions._click(pos)
+            return Response(message=result, break_loop=False)
+        if method == "double_click_at":
+            pos, err = _get_xy_and_convert()
+            if err:
+                return Response(message=err, break_loop=False)
+            result = actions._double_click(pos)
+            return Response(message=result, break_loop=False)
+        if method == "right_click_at":
+            pos, err = _get_xy_and_convert()
+            if err:
+                return Response(message=err, break_loop=False)
+            result = actions._right_click(pos)
+            return Response(message=result, break_loop=False)
+        if method == "hover_at":
+            pos, err = _get_xy_and_convert()
+            if err:
+                return Response(message=err, break_loop=False)
+            result = actions._hover(pos)
+            return Response(message=result, break_loop=False)
+        if method == "type_text_at":
+            pos, err = _get_xy_and_convert()
+            if err:
+                return Response(message=err, break_loop=False)
+            text = args.get("text", "")
+            click_result = actions._click(pos)
+            type_result = actions._type_text(str(text))
+            return Response(
+                message=f"{click_result} {type_result}", break_loop=False
+            )
+        if method == "type_text_focused":
+            """Type text without clicking - use when the input field already has focus. No index needed."""
+            text = args.get("text", "")
+            if not text:
+                return Response(message="Missing 'text' in tool_args.", break_loop=False)
+            type_result = actions._type_text(str(text))
+            return Response(message=type_result, break_loop=False)
 
         # Index-based methods require index_map
         index_map: Dict[int, Dict[str, float]] = (
@@ -135,8 +260,55 @@ class VisionActionsTool(Tool):
             return Response(
                 message=f"{click_result} {type_result}", break_loop=False
             )
+        if method == "right_click_index":
+            result = actions._right_click(pos)
+            return Response(message=result, break_loop=False)
+        if method == "hover_index":
+            result = actions._hover(pos)
+            return Response(message=result, break_loop=False)
+        if method == "drag_index_to_index":
+            to_index_arg = args.get("to_index")
+            if to_index_arg is None:
+                return Response(
+                    message="Missing 'to_index' for drag_index_to_index.",
+                    break_loop=False,
+                )
+            try:
+                to_index = int(to_index_arg)
+            except (TypeError, ValueError):
+                return Response(
+                    message=f"Invalid 'to_index' value: {to_index_arg}.",
+                    break_loop=False,
+                )
+            if to_index < 1:
+                return Response(
+                    message="to_index must be >= 1.",
+                    break_loop=False,
+                )
+            try:
+                to_pos = self._resolve_index(index_map, to_index)
+            except ValueError as e:
+                return Response(message=str(e), break_loop=False)
+            result = actions._drag(pos, to_pos)
+            return Response(message=result, break_loop=False)
+        if method == "scroll_at_index":
+            amount_arg = args.get("amount")
+            if amount_arg is None:
+                return Response(
+                    message="Missing 'amount' in tool_args (positive=up, negative=down).",
+                    break_loop=False,
+                )
+            try:
+                amount = int(amount_arg)
+            except (TypeError, ValueError):
+                return Response(
+                    message=f"Invalid 'amount' value: {amount_arg}.",
+                    break_loop=False,
+                )
+            result = actions._scroll_at(pos, amount)
+            return Response(message=result, break_loop=False)
 
         return Response(
-            message=f"Unknown method: {method}. Use vision_actions:click_index, vision_actions:double_click_index, vision_actions:type_text_at_index, vision_actions:press_keys, or vision_actions:scroll.",
+            message=f"Unknown method: {method}. Use index-based (click_index, double_click_index, type_text_at_index, right_click_index, hover_index, drag_index_to_index, scroll_at_index), coordinate-based (click_at, double_click_at, right_click_at, hover_at, type_text_at with x,y,text), type_text_focused (when field already focused), press_keys, wait, or close_popup.",
             break_loop=False,
         )

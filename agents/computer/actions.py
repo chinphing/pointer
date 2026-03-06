@@ -62,6 +62,7 @@ class ActionTools:
         return result
 
     def _type_text(self, text: str) -> str:
+        """Type text at the current cursor location (assumes field is already focused)."""
         self._check_stop()
         old = pyperclip.paste()
         pyperclip.copy(text)
@@ -99,11 +100,85 @@ class ActionTools:
         logger.info(result)
         return result
 
+    def _scroll_at(self, position: List[int], amount: int) -> str:
+        """Move to position then scroll there (so the scroll applies to that region/element)."""
+        self._check_stop()
+        if not self.dry_run:
+            pyautogui.moveTo(position[0], position[1])
+            time.sleep(0.15)
+            pyautogui.scroll(int(amount))
+            time.sleep(0.2)
+        self.last_action = {"tool": "scroll_at", "tool_input": {"position": position, "amount": amount}}
+        direction = "向上" if amount > 0 else "向下"
+        result = f"已在位置 [{position[0]}, {position[1]}] {direction}滚动 {abs(amount)} 个单位。"
+        logger.info(result)
+        return result
+
     def _wait(self, seconds: float) -> str:
         self._check_stop()
         time.sleep(float(seconds))
         self.last_action = {"tool": "wait", "tool_input": {"seconds": seconds}}
         result = f"已等待 {seconds} 秒。"
+        logger.info(result)
+        return result
+
+    def _hover(self, position: List[int]) -> str:
+        self._check_stop()
+        if not self.dry_run:
+            pyautogui.moveTo(position[0], position[1])
+            time.sleep(0.2)
+        self.last_action = {"tool": "hover", "tool_input": {"position": position}}
+        result = f"已将鼠标移至位置 [{position[0]}, {position[1]}]。"
+        logger.info(result)
+        return result
+
+    def _drag(self, from_position: List[int], to_position: List[int]) -> str:
+        self._check_stop()
+        if not self.dry_run:
+            pyautogui.moveTo(from_position[0], from_position[1])
+            time.sleep(0.1)
+            pyautogui.mouseDown()
+            time.sleep(0.05)
+            pyautogui.moveTo(to_position[0], to_position[1], duration=0.2)
+            time.sleep(0.05)
+            pyautogui.mouseUp()
+            time.sleep(0.2)
+        self.last_action = {
+            "tool": "drag",
+            "tool_input": {"from_position": from_position, "to_position": to_position},
+        }
+        result = f"已从 [{from_position[0]}, {from_position[1]}] 拖拽至 [{to_position[0]}, {to_position[1]}]。"
+        logger.info(result)
+        return result
+
+    def _close_popup(self, method: str = "esc", position: Optional[List[int]] = None) -> str:
+        self._check_stop()
+        if method == "esc":
+            if not self.dry_run:
+                pyautogui.press("esc")
+                time.sleep(0.5)
+            self.last_action = {"tool": "close_popup", "tool_input": {"method": method}}
+            result = "已按下 Esc 关闭弹窗。"
+            logger.info(result)
+            return result
+        if method in ("click_close", "click_cancel", "click_ok"):
+            if not position:
+                return "错误: 点击关闭/取消/确定需要提供 position 参数。"
+            logger.debug("close_popup %s at %s", method, position)
+            if not self.dry_run:
+                pyautogui.click(position[0], position[1])
+                time.sleep(0.5)
+            self.last_action = {
+                "tool": "close_popup",
+                "tool_input": {"method": method, "position": position},
+            }
+            button_name = method.replace("click_", "")
+            button_map = {"close": "关闭", "cancel": "取消", "ok": "确定"}
+            button_cn = button_map.get(button_name, button_name)
+            result = f"已点击{button_cn}按钮，位置: [{position[0]}, {position[1]}]。"
+            logger.info(result)
+            return result
+        result = "未知方法，请使用 'esc'、'click_close'、'click_cancel' 或 'click_ok'。"
         logger.info(result)
         return result
 

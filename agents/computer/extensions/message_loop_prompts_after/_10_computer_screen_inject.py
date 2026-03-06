@@ -8,10 +8,13 @@ Only the latest screen inject is sent to the LLM; earlier ones are replaced with
 """
 from __future__ import annotations
 
+import locale
 import os
+import platform
 import re
+import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -28,11 +31,19 @@ if _COMPUTER_DIR not in sys.path:
 
 import screen as screen_mod  # noqa: E402
 import som_util  # noqa: E402
+import os_prompts  # noqa: E402
 
 
 # Region keywords: (name, (x_frac_start, y_frac_start, x_frac_end, y_frac_end))
 # Center is middle 50%×50%; quadrants are half-width, half-height.
+# Key order matters for regex: 上方/下方/顶部/底部/top/bottom before 中央 so they match first.
 QUADRANT_MAP = {
+    "上方": (0, 0, 1, 0.5),
+    "下方": (0, 0.5, 1, 1),
+    "顶部": (0, 0, 1, 0.5),
+    "底部": (0, 0.5, 1, 1),
+    "top": (0, 0, 1, 0.5),
+    "bottom": (0, 0.5, 1, 1),
     "top_left": (0, 0, 0.5, 0.5),
     "top-right": (0.5, 0, 1, 0.5),
     "top_right": (0.5, 0, 1, 0.5),
@@ -42,15 +53,17 @@ QUADRANT_MAP = {
     "bottom-left": (0, 0.5, 0.5, 1),
     "left": (0, 0, 0.5, 1),
     "right": (0.5, 0, 1, 1),
+    "左上": (0, 0, 0.5, 0.5),
+    "右上": (0.5, 0, 1, 0.5),
+    "右下": (0.5, 0.5, 1, 1),
+    "左下": (0, 0.5, 0.5, 1),
+    "左侧": (0, 0, 0.5, 1),
+    "右侧": (0.5, 0, 1, 1),
     "center": (0.25, 0.25, 0.75, 0.75),
     "central": (0.25, 0.25, 0.75, 0.75),
     "centre": (0.25, 0.25, 0.75, 0.75),
     "中央": (0.25, 0.25, 0.75, 0.75),
     "中间": (0.25, 0.25, 0.75, 0.75),
-    "左上": (0, 0, 0.5, 0.5),
-    "右上": (0.5, 0, 1, 0.5),
-    "右下": (0.5, 0.5, 1, 1),
-    "左下": (0, 0.5, 0.5, 1),
 }
 
 QUADRANT_PATTERN = re.compile(
@@ -96,6 +109,62 @@ def _pil_to_base64_jpeg(pil_img: Image.Image, quality: int = 85) -> str:
 
 
 SCREEN_INJECT_PREVIEW = "<screen images>"
+SCREEN_RAW_PREVIEW = "<screen raw>"
+SCREEN_ANNOTATED_PREVIEW = "<screen annotated>"
+SCREEN_ZOOMED_PREVIEW = "<screen zoomed>"
+
+
+def _get_default_browser() -> str:
+    env_browser = os.environ.get("BROWSER", "").strip()
+    if env_browser:
+        return env_browser
+    try:
+        if sys.platform == "darwin":
+            r = subprocess.run(
+                ["defaults", "read", "com.apple.LaunchServices/com.apple.launchservices.secure", "LSHandlers"],
+                capture_output=True,
+                timeout=2,
+            )
+            if r.returncode == 0:
+                return "macOS default"
+        if sys.platform == "win32":
+            r = subprocess.run(
+                ["reg", "query", "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\http\\UserChoice", "/v", "ProgId"],
+                capture_output=True,
+                timeout=2,
+            )
+            if r.returncode == 0:
+                return "Windows default"
+    except Exception:
+        pass
+    return "not detected"
+
+
+def _build_environment_text(screen_width: int = 0, screen_height: int = 0) -> str:
+    now = datetime.now(timezone.utc).astimezone()
+    loc = locale.getlocale()
+    loc_str = f"{loc[0] or 'C'}_{loc[1] or ''}".rstrip("_") if loc else "C"
+    parts = [
+        f"OS: {platform.system()} {platform.release()} ({platform.machine()})",
+        f"Time: {now.strftime('%Y-%m-%d %H:%M:%S')} {now.tzname() or ''}",
+        f"Timezone: {now.tzinfo and getattr(now.tzinfo, 'key', str(now.tzinfo)) or 'local'}",
+        f"Locale: {loc_str}",
+        f"Browser: {_get_default_browser()}",
+    ]
+    if screen_width and screen_height:
+        parts.append(f"Primary screen (this capture): {screen_width}×{screen_height}")
+    return "Environment: " + "; ".join(parts) + "."
+
+
+# Reuse BoxAnnotator (and its RF-DETR model) across turns to avoid repeated model load
+_annotator_cache: Optional[Any] = None
+
+
+def _get_annotator() -> Any:
+    global _annotator_cache
+    if _annotator_cache is None:
+        _annotator_cache = som_util.BoxAnnotator()
+    return _annotator_cache
 
 
 def _replace_older_screen_injects_with_placeholder(
@@ -104,28 +173,71 @@ def _replace_older_screen_injects_with_placeholder(
 ) -> None:
     """Replace screen-inject messages with text-only placeholder to reduce tokens.
     If keep_last is True, only the last screen inject is kept; otherwise all are replaced.
+    For historical screen images: keep only raw screenshots (for before/after comparison),
+    discard annotated and zoomed images to save tokens.
     """
     if not history_output:
         return
-    indices: List[int] = []
+
+    # Track indices of different screen image types
+    inject_indices: List[int] = []  # Full inject blocks (text + all images)
+    raw_indices: List[int] = []       # Raw screenshot only
+    annotated_indices: List[int] = [] # Annotated screenshot only
+    zoomed_indices: List[int] = []    # Zoomed screenshot only (any zoomed preview)
+
     for i, out in enumerate(history_output):
         content = out.get("content")
-        if isinstance(content, dict) and content.get("preview") == SCREEN_INJECT_PREVIEW:
-            indices.append(i)
-    to_replace = indices[:-1] if keep_last and indices else indices
-    placeholder = history.RawMessage(
-        raw_content=[{"type": "text", "text": "[Previous screen omitted to save tokens.]"}],
-        preview="[Previous screen omitted]",
+        if not isinstance(content, dict):
+            continue
+        preview = content.get("preview", "")
+        if preview == SCREEN_INJECT_PREVIEW:
+            inject_indices.append(i)
+        elif preview == SCREEN_RAW_PREVIEW:
+            raw_indices.append(i)
+        elif preview == SCREEN_ANNOTATED_PREVIEW:
+            annotated_indices.append(i)
+        elif isinstance(preview, str) and preview.startswith(SCREEN_ZOOMED_PREVIEW):
+            # Match both "SCREEN_ZOOMED_PREVIEW" and "SCREEN_ZOOMED_PREVIEW <region>"
+            zoomed_indices.append(i)
+
+    # For annotated and zoomed: always replace older ones with placeholder (they're not needed for comparison)
+    placeholder_text = history.RawMessage(
+        raw_content=[{"type": "text", "text": "[Previous annotated/zoomed screen omitted to save tokens.]"}],
+        preview="[Previous annotated screen omitted]",
     )
-    for i in to_replace:
-        history_output[i] = history.OutputMessage(ai=False, content=placeholder)
+    for i in annotated_indices[:-1] if keep_last and annotated_indices else annotated_indices:
+        history_output[i] = history.OutputMessage(ai=False, content=placeholder_text)
+    for i in zoomed_indices[:-1] if keep_last and zoomed_indices else zoomed_indices:
+        history_output[i] = history.OutputMessage(ai=False, content=placeholder_text)
+    
+    # For raw screenshots: keep the last one (for comparison), replace older ones with smaller placeholder
+    if keep_last and raw_indices:
+        to_replace_raw = raw_indices[:-1]
+    else:
+        to_replace_raw = raw_indices
+    
+    raw_placeholder = history.RawMessage(
+        raw_content=[{"type": "text", "text": "[Previous raw screenshot for reference.]"}],
+        preview="[Previous raw screenshot]",
+    )
+    for i in to_replace_raw:
+        history_output[i] = history.OutputMessage(ai=False, content=raw_placeholder)
+    
+    # For full inject blocks: replace all but the last with placeholder
+    inject_placeholder = history.RawMessage(
+        raw_content=[{"type": "text", "text": "[Previous screen context omitted to save tokens.]"}],
+        preview="[Previous screen context omitted]",
+    )
+    to_replace_inject = inject_indices[:-1] if keep_last and inject_indices else inject_indices
+    for i in to_replace_inject:
+        history_output[i] = history.OutputMessage(ai=False, content=inject_placeholder)
 
 
 def _save_snapshots(
     context_id: str,
     raw_img: Image.Image,
     annotated_img: Image.Image,
-    zoomed_img: Optional[Tuple[str, Image.Image]] = None,
+    zoomed_imgs: Optional[List[Tuple[str, Image.Image]]] = None,
 ) -> None:
     """Save debug images under agents/computer/snapshots/<context_id>/<timestamp>_*.png."""
     try:
@@ -136,10 +248,10 @@ def _save_snapshots(
         prefix = os.path.join(run_dir, ts)
         raw_img.save(f"{prefix}_raw.png")
         annotated_img.save(f"{prefix}_annotated.png")
-        if zoomed_img is not None:
-            key, img = zoomed_img
-            safe_key = key.replace("/", "_").replace("\\", "_")
-            img.save(f"{prefix}_zoom_{safe_key}.png")
+        if zoomed_imgs:
+            for key, img in zoomed_imgs:
+                safe_key = key.replace("/", "_").replace("\\", "_")
+                img.save(f"{prefix}_zoom_{safe_key}.png")
     except Exception:
         pass
 
@@ -164,8 +276,8 @@ class ComputerScreenInject(Extension):
         w, h = img.size
 
         err_preview = ""
+        annotator = _get_annotator()
         try:
-            annotator = som_util.BoxAnnotator()
             boxes, _scores = annotator.predict(img, threshold=0.35)
             boxes = list(boxes) if boxes is not None else []
         except Exception as e:
@@ -187,42 +299,155 @@ class ComputerScreenInject(Extension):
             self.agent.set_data("computer_vision_index_map", {})
             err_preview = "No interactive elements detected."
 
-        content: List[Dict[str, Any]] = [
-            {"type": "text", "text": "Current screen: (1) raw, (2) annotated with indices. Use the numbers on the annotated image for tool calls. When referring to elements, describe their position (e.g. top-left, center, bottom-right, 左上/右上/左下/右下) to help target them accurately."}
-        ]
+        self.agent.set_data(
+            "computer_vision_screen_info",
+            {
+                "width": w,
+                "height": h,
+                "mon_left": mon_left,
+                "mon_top": mon_top,
+            },
+        )
+
+        prev_action_block: Optional[str] = None
+        last_action = self.agent.get_data("computer_last_vision_action")
+        if last_action:
+            action_desc = (
+                f"Tool: {last_action.get('tool', '')}:{last_action.get('method', '')}, "
+                f"args: {last_action.get('args', {})}, result: {last_action.get('result', '')}"
+            )
+            prev_action_block = (
+                f"Previous action: {action_desc}. "
+                "Before choosing the next action, first validate in your thoughts: did this action succeed? "
+                "Is the expected change visible on the current screen? Then output your next tool call."
+            )
+            self.agent.set_data("computer_last_vision_action", None)
+
+        annotation_help = (
+            "How to read the annotated image: each interactive element is wrapped in a colored box; "
+            "the index number is shown in a small same-color label that may be above, below, to the left, or to the right of the box. "
+            "Use the same color and proximity (position next to the box) to match the correct index to the target element."
+        )
+        valid_indices_text = ""
+        if index_map:
+            n_idx = len(index_map)
+            valid_indices_text = f" Valid indices on this screen: 1 to {n_idx}. Only use these indices when the target has a number; otherwise use coordinate-based tools (e.g. click_at with x, y)."
+        content = []
+        env_text = _build_environment_text(w, h)
+        content.append({"type": "text", "text": env_text})
+        if prev_action_block:
+            content.append({"type": "text", "text": prev_action_block})
+        content.append({
+            "type": "text",
+            "text": "Current screen: (1) raw, (2) annotated with indices. "
+            + annotation_help
+            + " Prefer index-based tools when the target has a number; if the target has no number, use coordinate-based tools (click_at, etc.) with the model's native coordinates (x, y)."
+            + valid_indices_text
+            + " When referring to elements, describe their position (e.g. top-left, center, bottom-right, 左上/右上/左下/右下)."
+        })
         if not index_map and err_preview:
             content.append({"type": "text", "text": err_preview})
 
-        for im in [img, annotated_img]:
-            b64 = _pil_to_base64_jpeg(im)
-            content.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
-            })
+        # Add OS-specific shortcuts reference
+        prompts_base_dir = os.path.join(_COMPUTER_DIR, "prompts")
+        os_shortcuts = os_prompts.format_os_context(prompts_base_dir)
+        if os_shortcuts:
+            content.append({"type": "text", "text": os_shortcuts})
 
+        # Build content blocks with proper LangChain format (list of dicts)
+        # Each message's raw_content must be a list to satisfy HumanMessage validation
+        
+        # 1. Context text (environment, instructions, annotation help)
+        context_content = content.copy()
+        
+        # 2. Raw screenshot - kept in history for comparison
+        b64_raw = _pil_to_base64_jpeg(img)
+        raw_img_content: List[Dict[str, Any]] = [
+            {"type": "text", "text": "[Screen raw]"},
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{b64_raw}"},
+            },
+        ]
+        
+        # 3. Annotated screenshot - discarded from history after use
+        b64_annotated = _pil_to_base64_jpeg(annotated_img)
+        annotated_img_content: List[Dict[str, Any]] = [
+            {"type": "text", "text": "[Screen annotated]"},
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{b64_annotated}"},
+            },
+        ]
+        
+        # 4. Zoomed screenshot - Always include top 1/4; add extra zoom if user specified a region
+        # Default: always zoom top 1/4 because interactive elements are dense there
+        zoomed_contents: List[Tuple[str, List[Dict[str, Any]]]] = []
+        zoomed_for_snapshot: Optional[Tuple[str, Image.Image]] = None
+
+        # Always generate top 1/4 zoom (fixed behavior)
+        top_zoomed = _crop_quadrant_2x(annotated_img, "top")
+        if top_zoomed is not None:
+            zoomed_for_snapshot = ("top", top_zoomed)
+            b64_top = _pil_to_base64_jpeg(top_zoomed)
+            zoomed_contents.append(("top", [
+                {"type": "text", "text": "[Screen zoomed] top, 2x (default focus area):"},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_top}"}},
+            ]))
+
+        # Check if user/model mentioned a specific region (excluding top/upper which is default)
         user_msg = ""
         if loop_data.user_message and getattr(loop_data.user_message, "message", None):
             user_msg = loop_data.user_message.message or ""
         last_resp = (loop_data.last_response or "").lower()
         combined = f"{user_msg} {last_resp}"
         quadrant_key = _detect_quadrant_hint(combined)
-        if quadrant_key:
+
+        # Ignore top/upper region mentions since top is already default zoomed
+        # Non-default regions: left, right, bottom, center, quadrants, etc.
+        TOP_REGION_KEYS = {"top", "上方", "顶部"}
+        if quadrant_key and quadrant_key not in TOP_REGION_KEYS:
             quadrant_key = quadrant_key.lower().replace("-", "_")
-        zoomed_for_snapshot: Optional[Tuple[str, Image.Image]] = None
-        if quadrant_key and quadrant_key in QUADRANT_MAP:
-            zoomed = _crop_quadrant_2x(annotated_img, quadrant_key)
-            if zoomed is not None:
-                zoomed_for_snapshot = (quadrant_key, zoomed)
-                b64_zoom = _pil_to_base64_jpeg(zoomed)
-                content.append({"type": "text", "text": f"Zoomed quadrant ({quadrant_key}), 2x:"})
-                content.append({
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{b64_zoom}"},
-                })
+            if quadrant_key in QUADRANT_MAP:
+                extra_zoomed = _crop_quadrant_2x(annotated_img, quadrant_key)
+                if extra_zoomed is not None:
+                    b64_extra = _pil_to_base64_jpeg(extra_zoomed)
+                    zoomed_contents.append((quadrant_key, [
+                        {"type": "text", "text": f"[Screen zoomed] {quadrant_key}, 2x:"},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_extra}"}},
+                    ]))
 
         context_id = getattr(self.agent.context, "id", None) or "default"
-        _save_snapshots(context_id, img, annotated_img, zoomed_for_snapshot)
+        # Build list of zoomed images for saving (extract from zoomed_contents)
+        zoomed_imgs_to_save: List[Tuple[str, Image.Image]] = []
+        for z_key, _ in zoomed_contents:
+            if z_key == "top" and top_zoomed is not None:
+                zoomed_imgs_to_save.append(("top", top_zoomed))
+            elif z_key != "top":
+                # Re-crop for non-top regions (or we could cache earlier)
+                extra_img = _crop_quadrant_2x(annotated_img, z_key)
+                if extra_img is not None:
+                    zoomed_imgs_to_save.append((z_key, extra_img))
+        _save_snapshots(context_id, img, annotated_img, zoomed_imgs_to_save)
 
-        raw = history.RawMessage(raw_content=content, preview=SCREEN_INJECT_PREVIEW)
-        loop_data.history_output.append(history.OutputMessage(ai=False, content=raw))
+        # Inject as separate messages so history can selectively keep/discard
+        # All contents are now properly formatted as lists for LangChain compatibility
+        
+        # 1. Context text (always kept as it's small and informative)
+        context_msg = history.RawMessage(raw_content=context_content, preview=SCREEN_INJECT_PREVIEW)
+        loop_data.history_output.append(history.OutputMessage(ai=False, content=context_msg))
+        
+        # 2. Raw screenshot (kept in history for before/after comparison)
+        raw_msg = history.RawMessage(raw_content=raw_img_content, preview=SCREEN_RAW_PREVIEW)
+        loop_data.history_output.append(history.OutputMessage(ai=False, content=raw_msg))
+        
+        # 3. Annotated screenshot (discarded from history after use)
+        annotated_msg = history.RawMessage(raw_content=annotated_img_content, preview=SCREEN_ANNOTATED_PREVIEW)
+        loop_data.history_output.append(history.OutputMessage(ai=False, content=annotated_msg))
+
+        # 4. Zoomed screenshots (default top 1/4 + optional extra regions, discarded after use)
+        for z_key, z_content in zoomed_contents:
+            zoomed_msg = history.RawMessage(raw_content=z_content, preview=f"{SCREEN_ZOOMED_PREVIEW} {z_key}")
+            loop_data.history_output.append(history.OutputMessage(ai=False, content=zoomed_msg))
+
         _replace_older_screen_injects_with_placeholder(loop_data.history_output)

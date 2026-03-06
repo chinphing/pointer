@@ -6,7 +6,7 @@
 - **Text extraction**: open a URL and extract main text (article body, links, visible content); return as text.
 - **Single-step navigation**: go to URL and stop, or return page title/summary.
 
-**Do not use for**: Form filling, login flows, multi-step workflows, file uploads, or any task that requires clicking through menus, dropdowns, or complex UI. For **interactive browser or desktop operations**, use **ComputerUse** (call_subordinate with `profile: "computer"`).
+**Do not use for**: (1) **Interface already open or existing** — when the browser or target page is already on screen, use **ComputerUse** to operate on the existing UI; (2) Form filling, login flows, multi-step workflows, file uploads, or any task that requires clicking through menus, dropdowns, or complex UI. For **any complex task in the browser** (or interactive desktop operations), **prefer ComputerUse** — use call_subordinate with `profile: "computer"`.
 
 **Arguments**:
 - `message`: Instructions for the browser agent (e.g. "Search for X and return the first 3 results", "Go to URL and extract the main article text"). Be clear and task-based; include credentials in message only if needed (they will be masked in logs).

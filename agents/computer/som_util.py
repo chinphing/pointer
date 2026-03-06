@@ -42,7 +42,7 @@ class BoxAnnotator:
     def __init__(
         self,
         palette: Optional[Sequence[tuple[int, int, int]]] = None,
-        font_scale: float = 0.75,
+        font_scale: float = 0.5,
         thickness: int = 1,
         pretrain_weights: str = "data/rfdetr_medium.pth",
         resolution: int = 1600,

@@ -10,11 +10,12 @@
 
 ## Not Allowed (Use ComputerUse Instead)
 
+- **Interface already open or existing**: Do **not** use browser_agent when the user already has a browser or the target page/interface is already on screen. In that case the user is looking at a live UI — use **ComputerUse** (profile=computer) to operate on the existing interface.
 - **Interactive operations**: Form filling, login flows, clicking through menus, dropdowns, multi-step wizards.
-- **Complex tasks**: Multi-page workflows, file uploads, checkout flows, anything requiring more than simple navigation + text extraction.
+- **Complex tasks in the browser**: Multi-page workflows, file uploads, checkout flows, anything requiring more than simple navigation + text extraction. **For complex browser tasks, always use ComputerUse (profile=computer).**
 - **Visual or DOM-heavy interaction**: Relying on precise clicks, drag-and-drop, or rich UI interaction.
 
-When the user needs **interactive browser or desktop operations**, the main agent should delegate to **ComputerUse** (profile=computer), not use browser_agent.
+When the user needs **interactive browser or desktop operations**, or any **complex browser task** (multi-step flows, forms, login, etc.), the main agent must delegate to **ComputerUse** (profile=computer), not use browser_agent. **For complex tasks in the browser, always prefer ComputerUse.**
 
 ## Operation Rules
 

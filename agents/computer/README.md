@@ -12,11 +12,11 @@
 | **职责** | **仅简单搜索与网页纯文本提取**：打开搜索引擎输入关键词取结果、打开 URL 提取正文/链接等纯文本，**不做任何交互操作** | **有交互的操作与复杂任务**：点击、输入、滚动、表单填写、登录、多步流程、文件上传、操作真实桌面与已打开浏览器等 |
 | **识别方式** | 主 Agent 在回复里填 `tool_name: "browser_agent"` | 启动或派发子任务时指定 `profile=computer` |
 | **实现** | `python/tools/browser_agent.py`，browser-use + Playwright **无头浏览器** | `agents/computer/`：截图 + 标注 + `vision_actions`，控制**当前显示器的真实屏幕**（像素级点击） |
-| **适用场景** | 仅需：搜一下、打开页面取文字 | 需要：在页面上点击、填表、登录、多步操作、或操作本机任意可见 UI |
+| **适用场景** | 仅需：搜一下、打开页面取文字；且**界面尚未打开**（无头浏览器新建会话） | 需要：在页面上点击、填表、登录、多步操作；或**界面已打开/已存在**（操作当前屏幕上的浏览器或任意可见 UI） |
 | **是否独立 profile** | 否，作为工具挂载在任意 profile 下 | 是，profile 名 `computer`，标题 ComputerUse |
 
-- **browser_agent**：不用于表单填写、登录流程、多步向导、文件上传等交互；这类需求应交给 **ComputerUse**（call_subordinate 传 `profile: "computer"`）。
-- **ComputerUse**：用于一切「需要和界面交互」或「复杂多步」的任务，包括在真实浏览器窗口里的操作。
+- **browser_agent**：不用于表单填写、登录流程、多步向导、文件上传等交互；**浏览器中但凡涉及复杂任务，一律优先使用 ComputerUse**。
+- **ComputerUse**：用于一切「需要和界面交互」或「复杂多步」的任务，**包括在浏览器中的复杂操作**（登录、填表、多步流程等）；call_subordinate 传 `profile: "computer"`。
 
 ## 技术方案
 
@@ -138,4 +138,4 @@ ComputerUse 支持 macOS、Windows 和 Linux，每轮屏幕注入时会自动检
 
 1. 启动或切换到 computer profile 后，每轮都会在构建 prompt 时执行屏幕注入（截图 + 检测 + 标注 + 可选象限），模型会看到当前屏幕的图与序号。
 2. 模型应输出 `tool_name` 如 `vision_actions:click_index`、`vision_actions:type_text_at_index`，以及 `tool_args`（`index` 必填，`type_text_at_index` 需带 `text`）。
-3. 任务完成后模型可调用 `response` 工具返回最终结果。
+3. 任务完成后，模型需**先清理环境**（关闭任务过程中弹出的界面、多开的标签页或为任务打开的 app），再调用 `response` 工具返回最终结果，避免留下多余窗口。

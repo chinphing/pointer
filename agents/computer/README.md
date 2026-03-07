@@ -31,10 +31,10 @@
 ```
 用户消息 → message_loop_prompts_after 扩展（仅 profile=computer）
          → screenshot_current_monitor() → 图1 原图
-         → BoxAnnotator.predict + sort_boxes_lrtb + annotate → 图2 标注图
+         → BoxAnnotator.predict_and_annotate_all → 图2 标注图（带序号）
          → 可选：根据方位词裁剪 2× 象限 → 图3..n
-         → 构建 index_map（屏幕坐标）写入 agent.data["computer_vision_index_map"]
-         → 将图1+图2+图3..n 以 RawMessage 追加到 loop_data.history_output
+         → 构建 index_map（屏幕坐标）写入 agent.data
+         → 将图1+图2..n 以 RawMessage 追加到 loop_data.history_output
          → prepare_prompt() 拼出含图片的 messages → 调用大模型
          → 模型返回 tool_name + tool_args
          → get_tool("vision_actions", method, args) → VisionActionsTool.execute
@@ -58,7 +58,7 @@
 | `screen.py` | 截图：`screenshot_current_monitor()` 返回 (PIL Image, (left, top, width, height))；`encode_image` 等。 |
 | `som_util.py` | `sort_boxes_lrtb(boxes, height)` 按左→右、上→下排序；`BoxAnnotator` 预测并标注，标签位置上/下居中。 |
 | `actions.py` | `ActionTools`：`_click`、`_double_click`、`_type_text` 等底层操作（pyautogui / pyperclip）。 |
-| `extensions/message_loop_prompts_after/_10_computer_screen_inject.py` | 屏幕注入扩展：截图、检测、排序、标注、可选象限、写 index_map。支持历史截图管理：保留原始截图用于对比，剔除标注图和放大图以节省 token。 |
+| `extensions/message_loop_prompts_after/_10_computer_screen_inject.py` | 屏幕注入扩展：截图、predict_and_annotate_all（单张标注图）、可选象限、写 index_map。历史截图管理：保留原始图用于对比，剔除标注图与放大图以节省 token。 |
 | `tools/vision_actions.py` | `VisionActionsTool`：从 agent.data 读 index_map 与 screen_info，序号用 `_resolve_index`，坐标用 `_resolve_coord`（经 coord_convert 还原），按 method 调用 ActionTools。 |
 | `coord_convert.py` | 可扩展的坐标还原：将模型输出的归一化坐标转为屏幕像素。内置 `qwen`（1000×1000）、`kimi`（1×1）、`pixel`；通过 `vision_coordinate_system` 配置项选择。 |
 | `snapshots/` | 调试用：每轮注入时会把当次的 raw、annotated、以及可选 zoom 图按 `snapshots/<context_id>/<timestamp>_raw.png` 等命名保存，便于排查问题；目录已加入 .gitignore。 |
@@ -66,19 +66,36 @@
 ## 依赖
 
 - **截图与操作**：`mss`、`pyautogui`、`PIL`、`pyperclip`
-- **标注与检测**：`cv2`、`numpy`、`rfdetr`（som_util 中的 RF-DETR 权重路径见 `BoxAnnotator`）
+- **标注与检测**：`cv2`、`numpy`、`rfdetr`、`paddle`/`paddleocr`（som_util 中的 RF-DETR 权重路径见 `BoxAnnotator`）
+
+### macOS：pyharp / libnetcdf 报错
+
+若出现 `Library not loaded: ... libnetcdf.22.dylib`（来自 `pyharp`，多为 paddle/paddleocr 的传递依赖），需安装 Homebrew 的 netcdf 并视情况做符号链接：
+
+```bash
+brew install netcdf
+```
+
+若安装后是 `libnetcdf.23.dylib` 等其它版本，而程序仍找 `libnetcdf.22.dylib`，可在 netcdf 的 lib 目录下为当前版本创建 22 的符号链接（以 23 为例）：
+
+```bash
+cd "$(brew --prefix netcdf)/lib" && ln -sf libnetcdf.23.dylib libnetcdf.22.dylib
+```
+
+（将 `23` 换成你本机 `ls libnetcdf.*.dylib` 看到的版本号。）
 
 ## 标注与标签放置策略
 
-`som_util.py` 中的 `BoxAnnotator` 负责检测交互元素并标注序号。标签放置遵循以下优先级规则：
+`som_util.py` 中的 `BoxAnnotator` 负责检测交互元素并标注序号。标签放置遵循以下规则：
 
-1. **排序规则**：元素按左→右、上→下排序（`sort_boxes_lrtb`），确保相邻元素序号相邻
-2. **位置优先级**：上 → 下 → 右 → 左（按视觉清晰度和阅读习惯）
-3. **边界检测**：标签必须完全在图像边界内
-4. **重叠避免**：标签矩形不能与任何其他元素 box 相交
-5. **邻近降权**：若某方向 50px 内有其他元素，该方向优先级降低（避免标签挤在一起）
-6. **颜色差异化**：相邻序号使用色相间隔较大的颜色，便于区分
-7. **内部备选**：若四个方向都无法放置（都被占据或超出边界），标签放在元素框内左上角
+1. **标签互不重叠**：已放置的标签矩形会参与后续候选的冲突检测，保证序号标签彼此不重叠（硬约束）。
+2. **尽量不压其它元素框**：在保证标签互不重叠的前提下，优先选择不与任何其他元素 bbox 相交的位置；无法满足时允许覆盖 bbox，但标签间仍不重叠。
+3. **排序规则**：元素按左→右、上→下排序（`sort_boxes_lrtb`），确保相邻元素序号相邻。
+4. **位置优先级**：上 → 下 → 右 → 左（按视觉清晰度和阅读习惯）。
+5. **边界检测**：标签必须完全在图像边界内。
+6. **颜色差异化**：相邻序号使用色相间隔较大的颜色，便于区分。
+7. **框内左上角**：外侧四个方向均不可用时，使用元素框内左上角作为第 5 个候选放置标签。
+8. **最少重叠优先**：当四方向均无法满足「不压其它 bbox 且不压已放标签」时，在 Tier2/Tier3 中按「不进一步制造更多重叠」选取方向：与其它 bbox 及已放标签的重叠数最少者优先，同分时按重叠面积升序。
 
 ### 行列标签冲突优化方案
 

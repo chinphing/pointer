@@ -1,9 +1,8 @@
 """
 Inject current screen images into the prompt for the computer profile.
-Adds: raw screenshot, annotated screenshot (with L-R T-B indices), and optionally
-a 2x zoomed region when user or model specified an area (top_left, top_right, bottom_right, bottom_left, or center).
-Also builds index_map (screen coordinates) for vision_actions tools.
-Saves each image under agents/computer/snapshots/<context_id>/ for debugging.
+Image order: (1) raw screenshot, (2) annotated image with indices, then (3) 2x zoomed regions (default top 1/4; optional extra from user/model area).
+Uses predict_and_annotate_all for detection; builds index_map (screen coordinates) for vision_actions tools.
+Saves images under agents/computer/snapshots/<context_id>/.
 Only the latest screen inject is sent to the LLM; earlier ones are replaced with a text placeholder to reduce token usage.
 """
 from __future__ import annotations
@@ -182,7 +181,7 @@ def _replace_older_screen_injects_with_placeholder(
     # Track indices of different screen image types
     inject_indices: List[int] = []  # Full inject blocks (text + all images)
     raw_indices: List[int] = []       # Raw screenshot only
-    annotated_indices: List[int] = [] # Annotated screenshot only
+    annotated_indices: List[int] = []  # Annotated with indices
     zoomed_indices: List[int] = []    # Zoomed screenshot only (any zoomed preview)
 
     for i, out in enumerate(history_output):
@@ -197,7 +196,6 @@ def _replace_older_screen_injects_with_placeholder(
         elif preview == SCREEN_ANNOTATED_PREVIEW:
             annotated_indices.append(i)
         elif isinstance(preview, str) and preview.startswith(SCREEN_ZOOMED_PREVIEW):
-            # Match both "SCREEN_ZOOMED_PREVIEW" and "SCREEN_ZOOMED_PREVIEW <region>"
             zoomed_indices.append(i)
 
     # For annotated and zoomed: always replace older ones with placeholder (they're not needed for comparison)
@@ -278,24 +276,24 @@ class ComputerScreenInject(Extension):
         err_preview = ""
         annotator = _get_annotator()
         try:
-            boxes, _scores = annotator.predict(img, threshold=0.35)
-            boxes = list(boxes) if boxes is not None else []
+            annotated_img, boxes_sorted = annotator.predict_and_annotate_all(
+                img, threshold=0.35, overlap_threshold=0.1
+            )
+            boxes_sorted = list(boxes_sorted)
         except Exception as e:
-            boxes = []
+            annotated_img = img
+            boxes_sorted = []
             err_preview = f"Detection failed: {e}; no indices available."
 
         index_map: Dict[int, Dict[str, float]] = {}
-        if boxes:
-            sorted_boxes = som_util.sort_boxes_lrtb(boxes, h)
-            annotated_img = annotator.annotate(sorted_boxes, img)
-            for i, box in enumerate(sorted_boxes):
+        if boxes_sorted:
+            for i, box in enumerate(boxes_sorted):
                 x1, y1, x2, y2 = float(box[0]), float(box[1]), float(box[2]), float(box[3])
                 cx = mon_left + (x1 + x2) / 2
                 cy = mon_top + (y1 + y2) / 2
                 index_map[i + 1] = {"x": cx, "y": cy}
             self.agent.set_data("computer_vision_index_map", index_map)
         else:
-            annotated_img = img
             self.agent.set_data("computer_vision_index_map", {})
             err_preview = "No interactive elements detected."
 
@@ -318,20 +316,24 @@ class ComputerScreenInject(Extension):
             )
             prev_action_block = (
                 f"Previous action: {action_desc}. "
-                "Before choosing the next action, first validate in your thoughts: did this action succeed? "
-                "Is the expected change visible on the current screen? Then output your next tool call."
+                "Strict validation: only treat as success if the expected change is clearly visible on screen; no 'maybe' or 'probably'. "
+                "If unverified or failed: (1) retry the same action first (1–2 times), (2) then try a different method, (3) only after several attempts still fail may you conclude the goal was not achieved. "
+                "Then output your next tool call (retry, alternative, or continue if verified)."
             )
             self.agent.set_data("computer_last_vision_action", None)
 
         annotation_help = (
             "How to read the annotated image: each interactive element is wrapped in a colored box; "
             "the index number is shown in a small same-color label that may be above, below, to the left, or to the right of the box. "
-            "Use the same color and proximity (position next to the box) to match the correct index to the target element."
+            "Use the same color and proximity (position next to the box) to match the correct index to the target element. "
+            "When multiple boxes could match the same target (e.g. a button inside a larger container), prefer the index whose bbox tightly wraps the target (smallest fit) for precise positioning; avoid the index of a larger bbox that merely contains it."
         )
-        valid_indices_text = ""
-        if index_map:
-            n_idx = len(index_map)
-            valid_indices_text = f" Valid indices on this screen: 1 to {n_idx}. Only use these indices when the target has a number; otherwise use coordinate-based tools (e.g. click_at with x, y)."
+        n_total = len(index_map)
+        valid_indices_text = (
+            f" Valid indices: 1 to {n_total}. " if index_map else ""
+        ) + (
+            "Only use these indices when the target has a number; otherwise use coordinate-based tools (e.g. click_at with x, y)." if index_map else ""
+        )
         content = []
         env_text = _build_environment_text(w, h)
         content.append({"type": "text", "text": env_text})
@@ -339,11 +341,13 @@ class ComputerScreenInject(Extension):
             content.append({"type": "text", "text": prev_action_block})
         content.append({
             "type": "text",
-            "text": "Current screen: (1) raw, (2) annotated with indices. "
-            + annotation_help
-            + " Prefer index-based tools when the target has a number; if the target has no number, use coordinate-based tools (click_at, etc.) with the model's native coordinates (x, y)."
-            + valid_indices_text
-            + " When referring to elements, describe their position (e.g. top-left, center, bottom-right, 左上/右上/左下/右下)."
+            "text": (
+                "Current screen: (1) raw, (2) annotated with indices; then zoomed regions. "
+                + annotation_help
+                + " Prefer index-based tools when the target has a number; if the target has no number, use coordinate-based tools (click_at, etc.) with the model's native coordinates (x, y)."
+                + valid_indices_text
+                + " When referring to elements, describe their position (e.g. top-left, center, bottom-right, 左上/右上/左下/右下)."
+            ),
         })
         if not index_map and err_preview:
             content.append({"type": "text", "text": err_preview})
@@ -370,7 +374,7 @@ class ComputerScreenInject(Extension):
             },
         ]
         
-        # 3. Annotated screenshot - discarded from history after use
+        # 3. Annotated screenshot (indices for vision_actions)
         b64_annotated = _pil_to_base64_jpeg(annotated_img)
         annotated_img_content: List[Dict[str, Any]] = [
             {"type": "text", "text": "[Screen annotated]"},
@@ -379,8 +383,8 @@ class ComputerScreenInject(Extension):
                 "image_url": {"url": f"data:image/jpeg;base64,{b64_annotated}"},
             },
         ]
-        
-        # 4. Zoomed screenshot - Always include top 1/4; add extra zoom if user specified a region
+
+        # 4. Zoomed screenshot - Always include top 1/4 from high-confidence image; add extra zoom if user specified a region
         # Default: always zoom top 1/4 because interactive elements are dense there
         zoomed_contents: List[Tuple[str, List[Dict[str, Any]]]] = []
         zoomed_for_snapshot: Optional[Tuple[str, Image.Image]] = None
@@ -441,11 +445,11 @@ class ComputerScreenInject(Extension):
         raw_msg = history.RawMessage(raw_content=raw_img_content, preview=SCREEN_RAW_PREVIEW)
         loop_data.history_output.append(history.OutputMessage(ai=False, content=raw_msg))
         
-        # 3. Annotated screenshot (discarded from history after use)
+        # 3. Annotated screenshot
         annotated_msg = history.RawMessage(raw_content=annotated_img_content, preview=SCREEN_ANNOTATED_PREVIEW)
         loop_data.history_output.append(history.OutputMessage(ai=False, content=annotated_msg))
 
-        # 4. Zoomed screenshots (default top 1/4 + optional extra regions, discarded after use)
+        # 4. Zoomed screenshots (default top 1/4 + optional extra regions)
         for z_key, z_content in zoomed_contents:
             zoomed_msg = history.RawMessage(raw_content=z_content, preview=f"{SCREEN_ZOOMED_PREVIEW} {z_key}")
             loop_data.history_output.append(history.OutputMessage(ai=False, content=zoomed_msg))

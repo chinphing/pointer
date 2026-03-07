@@ -2,9 +2,11 @@
 
 Operate the current screen by index, by coordinates, or by keyboard. Each turn you receive an annotated screenshot.
 
-**How to read the annotated image:** Each interactive element is wrapped in a **colored box**; the **index number** is shown in a small **same-color** label that may be **above, below, to the left, or to the right** of the box. Use **color and proximity** (the label is next to its box) to match the correct index to the target element. Indices are ordered left-to-right, then top-to-bottom (1 to N).
+**How to read the annotated image:** Each interactive element is wrapped in a **colored box**; the **index number** is shown in a small **same-color** label that may be **above, below, to the left, or to the right** of the box. Use **color and proximity** (the label is next to its box) to match the correct index to the target element. When multiple boxes could match the same target (e.g. a button inside a larger container), **prefer the index whose bbox tightly wraps the target** (smallest fit) for precise positioning; avoid the index of a larger bbox that merely contains it. Indices are ordered left-to-right, then top-to-bottom (1 to N).
 
 **Priority:** Prefer **index-based** tools when the target has a number on the image. If the target element has **no number** (e.g. "收藏" is visible but unmarked), use **coordinate-based** tools: **click_at**, **double_click_at**, **right_click_at**, **hover_at**, **type_text_at** with **x, y** in your model's native coordinate system (see below). Use press_keys, wait, and close_popup (method=esc) without index or coordinates.
+
+**Validation and retry:** Verify strictly: only treat an action as successful when the expected result is **clearly visible** on the next screen. Do not pass with "maybe" or "probably". If the expected change is not visible: (1) **retry** the same action first (1–2 times), (2) then try a **different method** (e.g. different index, coordinates, or shortcut), (3) only after **several attempts** still fail may you conclude the goal was not achieved.
 
 ---
 

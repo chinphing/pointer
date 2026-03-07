@@ -60,3 +60,5 @@ Pillow>=10.0.0
 opencv-python>=4.8.0
 numpy>=1.24.0
 rfdetr>=1.4.0
+paddlepaddle>=3.3.0
+paddleocr>=3.4.0

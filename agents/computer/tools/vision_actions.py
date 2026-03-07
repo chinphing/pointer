@@ -162,11 +162,42 @@ class VisionActionsTool(Tool):
                 break_loop=False,
             )
 
-        # Coordinate-based methods (when target has no index): x, y in model's native system
-        def _get_xy_and_convert():
+        # Coordinate-based methods: absolute (x, y) or relative to anchor_index (pixels)
+        def _get_pos_for_coord_action():
+            anchor = args.get("anchor_index")
+            if anchor is not None:
+                index_map_rel = self.agent.get_data("computer_vision_index_map") or {}
+                if not index_map_rel:
+                    return None, "anchor_index requires index_map (ensure screen inject ran)."
+                try:
+                    base = self._resolve_index(index_map_rel, int(anchor))
+                except (ValueError, TypeError) as e:
+                    return None, str(e)
+                offset_x, offset_y = args.get("offset_x"), args.get("offset_y")
+                direction = (args.get("direction") or "").strip().lower()
+                pixels = args.get("pixels")
+                if offset_x is not None or offset_y is not None:
+                    dx = int(round(float(offset_x or 0)))
+                    dy = int(round(float(offset_y or 0)))
+                elif direction and pixels is not None:
+                    try:
+                        p = int(round(float(pixels)))
+                    except (TypeError, ValueError):
+                        return None, f"Invalid 'pixels' value: {pixels}."
+                    dir_map = {
+                        "right": (p, 0), "left": (-p, 0),
+                        "above": (0, -p), "up": (0, -p),
+                        "below": (0, p), "down": (0, p),
+                    }
+                    if direction not in dir_map:
+                        return None, "direction must be one of: left, right, above, below, up, down."
+                    dx, dy = dir_map[direction]
+                else:
+                    return None, "With anchor_index provide offset_x/offset_y (pixels) or direction + pixels."
+                return [base[0] + dx, base[1] + dy], None
             x_arg, y_arg = args.get("x"), args.get("y")
             if x_arg is None or y_arg is None:
-                return None, "Missing 'x' or 'y' in tool_args for coordinate-based action."
+                return None, "Missing 'x'/'y' or anchor_index (+ offset_x/offset_y or direction + pixels)."
             try:
                 pos = self._resolve_coord(float(x_arg), float(y_arg))
                 return pos, None
@@ -174,31 +205,31 @@ class VisionActionsTool(Tool):
                 return None, str(e)
 
         if method == "click_at":
-            pos, err = _get_xy_and_convert()
+            pos, err = _get_pos_for_coord_action()
             if err:
                 return Response(message=err, break_loop=False)
             result = actions._click(pos)
             return Response(message=result, break_loop=False)
         if method == "double_click_at":
-            pos, err = _get_xy_and_convert()
+            pos, err = _get_pos_for_coord_action()
             if err:
                 return Response(message=err, break_loop=False)
             result = actions._double_click(pos)
             return Response(message=result, break_loop=False)
         if method == "right_click_at":
-            pos, err = _get_xy_and_convert()
+            pos, err = _get_pos_for_coord_action()
             if err:
                 return Response(message=err, break_loop=False)
             result = actions._right_click(pos)
             return Response(message=result, break_loop=False)
         if method == "hover_at":
-            pos, err = _get_xy_and_convert()
+            pos, err = _get_pos_for_coord_action()
             if err:
                 return Response(message=err, break_loop=False)
             result = actions._hover(pos)
             return Response(message=result, break_loop=False)
         if method == "type_text_at":
-            pos, err = _get_xy_and_convert()
+            pos, err = _get_pos_for_coord_action()
             if err:
                 return Response(message=err, break_loop=False)
             text = args.get("text", "")

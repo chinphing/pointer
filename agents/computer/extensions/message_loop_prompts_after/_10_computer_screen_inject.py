@@ -277,7 +277,7 @@ class ComputerScreenInject(Extension):
         annotator = _get_annotator()
         try:
             annotated_img, boxes_sorted = annotator.predict_and_annotate_all(
-                img, threshold=0.35, overlap_threshold=0.1
+                img, threshold=0.1, overlap_threshold=0.1
             )
             boxes_sorted = list(boxes_sorted)
         except Exception as e:

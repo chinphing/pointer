@@ -7,6 +7,13 @@ import numpy as np
 from PIL import Image
 
 from rfdetr.detr import RFDETRMedium
+import rtree
+
+# 标签放置：重叠面积超过自身 10% 时视为“过挤”,会干扰其他元素的识别，四方向均过挤则用框内左上角
+OVERLAP_AREA_RATIO_THRESHOLD = 0.1
+# rtree 优化：每个方向只考虑“有重叠的至多 5 个”+“最近邻 5 个”参与重叠面积累加
+RTREE_OVERLAP_TOP_K = 5
+RTREE_NEAREST_K = 5
 
 
 def _sort_boxes_lrtb(
@@ -66,6 +73,52 @@ def _intersection_area(a: Tuple[int, int, int, int], b: Tuple[int, int, int, int
     return (ix2 - ix1) * (iy2 - iy1)
 
 
+def _compute_overlap_stats(
+    label_rect: Tuple[int, int, int, int],
+    rtree_index: object,
+    rect_by_id: List[Tuple[int, int, int, int]],
+    overlap_top_k: int = RTREE_OVERLAP_TOP_K,
+    nearest_k: int = RTREE_NEAREST_K,
+) -> Tuple[float, float]:
+    """
+    使用预建 rtree 索引计算标签矩形对「其他元素」的覆盖比例统计。
+
+    - total_overlap: 对各其它矩形的「覆盖比例」之和（覆盖比例 = 交集面积 / 该其它矩形面积）。
+    - max_single: 对单个其它矩形的最大覆盖比例（分母为该其它元素面积，非标签自身面积）。
+    只考虑与 label_rect 相交的至多 overlap_top_k 个 + 最近邻 nearest_k 个。
+    """
+    total = 0.0
+    max_single = 0.0
+    if not rect_by_id:
+        return total, max_single
+    lx1, ly1, lx2, ly2 = label_rect
+    overlapping_ids = list(rtree_index.intersection((lx1, ly1, lx2, ly2)))
+    overlap_areas = [
+        (_intersection_area(label_rect, rect_by_id[rid]), rid)
+        for rid in overlapping_ids
+        if rid < len(rect_by_id)
+    ]
+    overlap_areas.sort(key=lambda x: -x[0])
+    candidate_ids = set(rid for _, rid in overlap_areas[:overlap_top_k])
+    nearest_ids = list(rtree_index.nearest((lx1, ly1, lx2, ly2), nearest_k))
+    candidate_ids.update(nearest_ids)
+    for rid in candidate_ids:
+        if rid >= len(rect_by_id):
+            continue
+        other = rect_by_id[rid]
+        inter = _intersection_area(label_rect, other)
+        if inter <= 0:
+            continue
+        other_area = (other[2] - other[0]) * (other[3] - other[1])
+        if other_area <= 0:
+            continue
+        ratio = inter / other_area
+        total += ratio
+        if ratio > max_single:
+            max_single = ratio
+    return total, max_single
+
+
 def _rects_overlap_rate(a: Tuple[int, int, int, int], b: Tuple[int, int, int, int]) -> float:
     # 先判断是否有交集
     if not _bboxes_overlap(a, b):
@@ -77,46 +130,37 @@ def _rects_overlap_rate(a: Tuple[int, int, int, int], b: Tuple[int, int, int, in
     area_intersection = (max(ax1, bx1) - min(ax2, bx2)) * (max(ay1, by1) - min(ay2, by2))
     return area_intersection * area_intersection / (area_a * area_b + 1e-6)
 
-def trim_by_overlap(boxes_with_scores: List[Tuple[Sequence[float], float]], overlap_threshold: float = 0.9) \
-            -> List[Tuple[Sequence[float], float]]:
+def trim_by_overlab_optimize(
+    boxes_with_scores: List[Tuple[Sequence[float], float]],
+    overlap_threshold: float = 0.9,
+) -> List[Tuple[Sequence[float], float]]:
     """
-    按照overlap_threshold过滤boxes_with_scores
+    按 overlap_threshold 过滤：按 score 降序保留框，若与已保留框的 _rects_overlap_rate > threshold 则剔除。
+    使用 rtree 只对与当前框相交的已保留框做重叠率判断，不遍历全部。
     """
-    boxes_with_scores_trimmed = []
-    sorted_boxes_with_scores = sorted(boxes_with_scores, key=lambda x: x[1], reverse=True)
-    for i in range(len(sorted_boxes_with_scores)):
-        box_with_score = sorted_boxes_with_scores[i]
+    if not boxes_with_scores:
+        return []
+    sorted_list = sorted(boxes_with_scores, key=lambda x: x[1], reverse=True)
+    idx = rtree.index.Index()
+    kept_rects: List[Tuple[float, float, float, float]] = []
+    result: List[Tuple[Sequence[float], float]] = []
+    for box_with_score in sorted_list:
         box = box_with_score[0]
-
+        x1, y1, x2, y2 = float(box[0]), float(box[1]), float(box[2]), float(box[3])
+        bbox = (x1, y1, x2, y2)
+        overlapping_ids = list(idx.intersection(bbox))
         is_overlap = False
-        for j in range(len(boxes_with_scores_trimmed)):
-            box_trimmed = boxes_with_scores_trimmed[j][0]
-            if _rects_overlap_rate(box, box_trimmed) > overlap_threshold:
+        for rid in overlapping_ids:
+            if rid >= len(kept_rects):
+                continue
+            if _rects_overlap_rate(kept_rects[rid], bbox) > overlap_threshold:
                 is_overlap = True
                 break
         if not is_overlap:
-            boxes_with_scores_trimmed.append(box_with_score)
-    return boxes_with_scores_trimmed
-
-def trim_by_overlab_optimize(boxes_with_scores: List[Tuple[Sequence[float], float]], overlap_threshold: float = 0.9) \
-            -> List[Tuple[Sequence[float], float]]:
-    """
-    将bbox的左上角坐标都按照100个像素为单位等分量化，量化后所有的bboxes都变成100x100的网格，每个网格内的bboxes进行overlap_threshold过滤
-    """
-    grid_boxes = {}
-
-    for box_with_score in boxes_with_scores:
-        box = box_with_score[0]
-        x1, y1, _, _ = box
-        key = int(x1 // 500) + int(y1 // 500)
-        if key not in grid_boxes:
-            grid_boxes[key] = []
-        grid_boxes[key].append(box_with_score)
-
-    boxes_with_scores_trimmed = []
-    for _, box_with_scores in grid_boxes.items():
-        boxes_with_scores_trimmed.extend(trim_by_overlap(box_with_scores, overlap_threshold))
-    return boxes_with_scores_trimmed
+            kept_rects.append(bbox)
+            idx.insert(len(kept_rects) - 1, bbox)
+            result.append(box_with_score)
+    return result
 
 class BoxAnnotator:
     """
@@ -134,16 +178,22 @@ class BoxAnnotator:
         pretrain_weights: str = "data/rfdetr_medium.pth",
         resolution: int = 1600,
     ) -> None:
-        # BGR 调色板
+        # BGR 调色板，色相尽量拉开以减少相邻序号同色
         self.palette: Sequence[tuple[int, int, int]] = palette or [
-            (0, 0, 255),  # 红
-            (0, 255, 0),  # 绿
-            (255, 0, 0),  # 蓝
-            (0, 255, 255),  # 黄
-            (255, 0, 255),  # 品红
-            (255, 255, 0),  # 青
-            (128, 0, 128),  # 紫
-            (0, 128, 255),  # 橙
+            (0, 0, 255),      # 红
+            (0, 255, 0),      # 绿
+            (255, 0, 0),      # 蓝
+            (0, 255, 255),    # 黄
+            (255, 0, 255),    # 品红
+            (255, 255, 0),    # 青
+            (0, 128, 255),    # 橙
+            (0, 165, 255),    # 橙红
+            (203, 192, 255),  # 淡紫
+            (0, 255, 127),    # 春绿
+            (255, 165, 0),    # 深橙
+            (147, 20, 255),   # 深粉
+            (255, 128, 0),    # 天蓝
+            (0, 215, 255),    # 金
         ]
         self.font = cv2.FONT_HERSHEY_SIMPLEX
         self.font_scale = font_scale
@@ -173,9 +223,9 @@ class BoxAnnotator:
         detections = self.model.predict(image, threshold=threshold)
         boxes = detections.xyxy
         scores = detections.confidence
-        return boxes, scores
+        return list(zip(boxes, scores))
 
-    def predict_with_ocr(self, image: Image.Image, threshold: float = 0.9, padding: int = 3) -> Iterable[Sequence[float]]:
+    def predict_with_ocr(self, image: Image.Image, threshold: float = 0.8, padding: int = 3) -> Iterable[Sequence[float]]:
         """
         预测图片中的物体并进行OCR识别。返回值为 boxes 和 scores。如果 scores 小于 threshold，则不返回。
         """
@@ -189,8 +239,9 @@ class BoxAnnotator:
         # 边框扩大5像素
         boxes = [[x1 - padding, y1 - padding, x2 + padding, y2 + padding] for x1, y1, x2, y2 in boxes]
         scores = ocr_results[0].json['res']['dt_scores']
-        
-        return boxes, scores
+        boxes_with_scores = list(zip(boxes, scores))
+        boxes_with_scores_filtered = list(filter(lambda x: x[1] > threshold, boxes_with_scores))
+        return boxes_with_scores_filtered
 
     def annotate(
         self,
@@ -202,18 +253,12 @@ class BoxAnnotator:
         根据给定的 boxes 在图片上绘制彩色边框和序号标签（1 起编）。
 
         标签放置规则：
-        1. 序号标签彼此不重叠（硬约束）。
-        2. 序号标签尽量不与其它 bbox 重叠；无法满足时允许覆盖 bbox，但标签间仍不重叠。
-        3. 方向优先级：正上方 → 正下方 → 右方居中 → 左边居中。
-        4. 边界：标签背景不得超出图像范围。
-        5. 无合适外侧位置时使用框内左上角作为第 5 个候选（方向 id 4），保证极端密集时仍有可放位置。
-        6. 当四方向均无 Tier1（即必须与其它 bbox 或已放标签重叠）时，在 Tier2/Tier3 中按“不进一步
-           制造更多重叠”优先：选择与其它 bbox 及已放标签的重叠数最少的方向；同分时按重叠面积升序。
-
-        选择逻辑（三档）：生成五个候选（上/下/右/左 + 框内左上角）后，方向 4 排在最后，其余保持上→下→右→左顺序；
-        Tier1：在边界内且不覆盖其它 bbox 且不覆盖已放置标签；Tier2：在边界内且不覆盖已放置标签，
-        若有多个候选则按重叠数（及重叠面积）最小选取；Tier3：在边界内，若有多个候选则同样按重叠
-        最少选取；若无则取第一个候选并裁剪到图像边界。
+        1. 四个方向（上/下/右/左）分别计算该方向标签对「其他元素」的覆盖比例之和（覆盖比例 = 交集面积/该其它元素面积），
+           在边界内的候选中按总覆盖比例最小优先采用该方向。
+        2. 特殊情况：记录每个方向对单个其它元素的最大覆盖比例（分母为其它元素面积）；若四个方向该最大比例均 > 50%，
+           则在当前元素框内左上角放置标签（方向 id 4）。
+        3. 边界：标签背景不得超出图像范围；仅在有边界内的候选中比较重叠面积。
+        4. 无合适外侧位置（如均越界）时使用框内左上角作为兜底。
 
         参数
         ----
@@ -259,8 +304,12 @@ class BoxAnnotator:
         # 相邻序号使用色相间隔更大的颜色，便于区分
         color_step = max(1, (n_palette // 2) + 1)
 
-        # 已放置的标签矩形，用于保证标签彼此不重叠
-        placed_label_rects: List[Tuple[int, int, int, int]] = []
+        # 预建 rtree 索引一次，后续只增不改（每放置一个标签即插入）；rect_by_id[id] 与索引 id 一一对应
+        rtree_index = rtree.index.Index()
+        rect_by_id = list(boxes_rects)
+        for rid, r in enumerate(rect_by_id):
+            x1, y1, x2, y2 = r
+            rtree_index.insert(rid, (x1, y1, x2, y2))
 
         for i in range(n_boxes):
             x1, y1, x2, y2 = boxes_rects[i]
@@ -278,44 +327,8 @@ class BoxAnnotator:
             cy = (y1 + y2) // 2
 
             def _in_bounds(bg_x1: int, bg_y1: int, bg_x2: int, bg_y2: int) -> bool:
-                """规则 2：标签背景是否在图像范围内。"""
+                """标签背景是否在图像范围内。"""
                 return bg_x1 >= 0 and bg_y1 >= 0 and bg_x2 <= width and bg_y2 <= height
-
-            def _overlaps_other(bg_x1: int, bg_y1: int, bg_x2: int, bg_y2: int) -> bool:
-                """标签矩形是否与其它元素 box 相交。"""
-                label_rect = (bg_x1, bg_y1, bg_x2, bg_y2)
-                for j in range(n_boxes):
-                    if j == i:
-                        continue
-                    if _bboxes_overlap(label_rect, boxes_rects[j]):
-                        return True
-                return False
-
-            def _overlaps_placed_labels(bg_x1: int, bg_y1: int, bg_x2: int, bg_y2: int) -> bool:
-                """标签矩形是否与已放置的任一标签相交（保证标签彼此不重叠）。"""
-                label_rect = (bg_x1, bg_y1, bg_x2, bg_y2)
-                for pr in placed_label_rects:
-                    if _bboxes_overlap(label_rect, pr):
-                        return True
-                return False
-
-            def _overlap_score(bg_x1: int, bg_y1: int, bg_x2: int, bg_y2: int) -> Tuple[int, int]:
-                """用于 Tier2/Tier3 排序：优先不制造更多重叠。(重叠元素总数, 重叠面积总和)。"""
-                label_rect = (bg_x1, bg_y1, bg_x2, bg_y2)
-                count_bbox = 0
-                count_placed = 0
-                area_total = 0
-                for j in range(n_boxes):
-                    if j == i:
-                        continue
-                    if _bboxes_overlap(label_rect, boxes_rects[j]):
-                        count_bbox += 1
-                        area_total += _intersection_area(label_rect, boxes_rects[j])
-                for pr in placed_label_rects:
-                    if _bboxes_overlap(label_rect, pr):
-                        count_placed += 1
-                        area_total += _intersection_area(label_rect, pr)
-                return (count_bbox + count_placed, area_total)
 
             # 五个候选：四方向 + 框内左上角。标签与 bbox 贴齐无空白。(方向id, (标签背景 rect, 文字坐标))
             _in_left = min(x1 + tw + pad * 2, x2)
@@ -342,11 +355,7 @@ class BoxAnnotator:
                     (x1 + pad + 2, _in_bottom - 2),
                 )),
             ]
-            # 方向 4（框内左上角）始终排在最后，其余保持 0,1,2,3 顺序
-            candidates = sorted(raw_candidates, key=lambda c: (1 if c[0] == 4 else 0, c[0]))
-            candidates = [c[1] for c in candidates]
 
-            # --- 选择位置：三档。Tier1 不压 bbox 且不压已放标签；Tier2 仅不压已放标签；Tier3 仅边界内 ---
             def _clip_chosen(
                 bg_x1: int, bg_y1: int, bg_x2: int, bg_y2: int, tx: int, ty: int
             ) -> Tuple[Tuple[int, int, int, int], Tuple[int, int]]:
@@ -355,44 +364,40 @@ class BoxAnnotator:
                     (max(0, tx), min(height - 1, ty)),
                 )
 
-            chosen = None
-            for (bg_x1, bg_y1, bg_x2, bg_y2), (tx, ty) in candidates:
-                if (
-                    _in_bounds(bg_x1, bg_y1, bg_x2, bg_y2)
-                    and not _overlaps_other(bg_x1, bg_y1, bg_x2, bg_y2)
-                    and not _overlaps_placed_labels(bg_x1, bg_y1, bg_x2, bg_y2)
-                ):
-                    chosen = _clip_chosen(bg_x1, bg_y1, bg_x2, bg_y2, tx, ty)
-                    break
-            if chosen is None:
-                # Tier2: 不压已放标签但允许压 bbox；按“重叠最少”优先（先重叠数再重叠面积）
-                tier2 = [
-                    ((bg_x1, bg_y1, bg_x2, bg_y2), (tx, ty))
-                    for (bg_x1, bg_y1, bg_x2, bg_y2), (tx, ty) in candidates
-                    if _in_bounds(bg_x1, bg_y1, bg_x2, bg_y2)
-                    and not _overlaps_placed_labels(bg_x1, bg_y1, bg_x2, bg_y2)
-                ]
-                if tier2:
-                    tier2.sort(key=lambda c: _overlap_score(c[0][0], c[0][1], c[0][2], c[0][3]))
-                    (bg_x1, bg_y1, bg_x2, bg_y2), (tx, ty) = tier2[0]
-                    chosen = _clip_chosen(bg_x1, bg_y1, bg_x2, bg_y2, tx, ty)
-            if chosen is None:
-                # Tier3: 仅边界内；按“重叠最少”优先（重叠元素数 + 重叠面积）
-                tier3 = [
-                    ((bg_x1, bg_y1, bg_x2, bg_y2), (tx, ty))
-                    for (bg_x1, bg_y1, bg_x2, bg_y2), (tx, ty) in candidates
-                    if _in_bounds(bg_x1, bg_y1, bg_x2, bg_y2)
-                ]
-                if tier3:
-                    tier3.sort(key=lambda c: _overlap_score(c[0][0], c[0][1], c[0][2], c[0][3]))
-                    (bg_x1, bg_y1, bg_x2, bg_y2), (tx, ty) = tier3[0]
-                    chosen = _clip_chosen(bg_x1, bg_y1, bg_x2, bg_y2, tx, ty)
-            if chosen is None:
-                chosen = _clip_chosen(
-                    candidates[0][0][0], candidates[0][0][1],
-                    candidates[0][0][2], candidates[0][0][3],
-                    candidates[0][1][0], candidates[0][1][1],
+            # --- 四方向重叠统计（0,1,2,3）：每方向算 total_overlap、max_single、自身面积 ---
+            dir_stats_all: List[Tuple[int, int, int, int, int, int, int, int, int, int]] = []
+            for dir_id, ((bg_x1, bg_y1, bg_x2, bg_y2), (tx, ty)) in raw_candidates:
+                if dir_id == 4:
+                    continue
+                label_rect = (bg_x1, bg_y1, bg_x2, bg_y2)
+                area = (bg_x2 - bg_x1) * (bg_y2 - bg_y1)
+                total_overlap, max_single = _compute_overlap_stats(
+                    label_rect, rtree_index, rect_by_id
                 )
+                dir_stats_all.append((dir_id, total_overlap, max_single, area, bg_x1, bg_y1, bg_x2, bg_y2, tx, ty))
+
+            # 特殊情况：四个方向各自对某其它元素的最大覆盖比例均 > 50%（分母为其它元素面积）-> 用框内左上角
+            use_inside = False
+            if len(dir_stats_all) == 4 and all(
+                max_single > OVERLAP_AREA_RATIO_THRESHOLD for (_, _, max_single, *_) in dir_stats_all
+            ):
+                use_inside = True
+
+            # 仅考虑在边界内的候选，按 total_overlap 最小选取
+            dir_stats = [s for s in dir_stats_all if _in_bounds(s[4], s[5], s[6], s[7])]
+
+            if use_inside:
+                (_, (bg_rect, text_pos)) = raw_candidates[4]
+                chosen = _clip_chosen(bg_rect[0], bg_rect[1], bg_rect[2], bg_rect[3], text_pos[0], text_pos[1])
+            elif dir_stats:
+                # 按总覆盖比例最小选方向；同分保持上→下→右→左顺序
+                dir_stats.sort(key=lambda s: (s[1], s[0]))
+                _, _, _, _, bg_x1, bg_y1, bg_x2, bg_y2, tx, ty = dir_stats[0]
+                chosen = _clip_chosen(bg_x1, bg_y1, bg_x2, bg_y2, tx, ty)
+            else:
+                # 无合法外侧候选（均越界或压已放标签），兜底用框内左上角
+                (_, (bg_rect, text_pos)) = raw_candidates[4]
+                chosen = _clip_chosen(bg_rect[0], bg_rect[1], bg_rect[2], bg_rect[3], text_pos[0], text_pos[1])
 
             (bg_x1, bg_y1, bg_x2, bg_y2), (tx, ty) = chosen
             # 绘制标签背景与序号文字
@@ -407,7 +412,9 @@ class BoxAnnotator:
                 self.thickness,
                 cv2.LINE_AA,
             )
-            placed_label_rects.append((bg_x1, bg_y1, bg_x2, bg_y2))
+            # 同步更新预建 rtree，供后续元素直接使用
+            rect_by_id.append((bg_x1, bg_y1, bg_x2, bg_y2))
+            rtree_index.insert(len(rect_by_id) - 1, (bg_x1, bg_y1, bg_x2, bg_y2))
 
         # cv2 -> PIL
         return Image.fromarray(cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB))
@@ -427,15 +434,9 @@ class BoxAnnotator:
         预测图片中的物体并进行标注，返回一张标注图与所有检测框（按左右上下次序排序）。
         返回: ( 标注图, boxes_sorted )
         """
-        boxes, scores = self.predict(image, threshold=threshold)
-        boxes_with_scores = list(zip(boxes, scores))
-        try:
-            boxes_with_scores_ocr, scores_ocr = self.predict_with_ocr(image, padding=padding)
-            boxes_with_scores_ocr = list(zip(boxes_with_scores_ocr, scores_ocr))
-            boxes_with_scores = [*boxes_with_scores, *boxes_with_scores_ocr]
-        except Exception as e:
-            import warnings
-            warnings.warn(f"OCR skipped in predict_and_annotate_all: {e!r}. Using RF-DETR boxes only.", stacklevel=2)
+        boxes_with_scores = self.predict(image, threshold=threshold)
+        boxes_with_scores_ocr = self.predict_with_ocr(image, padding=padding)
+        boxes_with_scores = [*boxes_with_scores, *boxes_with_scores_ocr]
         boxes_with_scores_trimmed = trim_by_overlab_optimize(boxes_with_scores, overlap_threshold=overlap_threshold)
         boxes_sorted = _sort_boxes_lrtb([b[0] for b in boxes_with_scores_trimmed], image.height)
         annotated_img = self.annotate(boxes_sorted, image, start_index=1)
@@ -443,7 +444,7 @@ class BoxAnnotator:
 
 if __name__ == "__main__":
     base_dir = "/Users/yunyun/Desktop/agent-zero"
-    image = Image.open(base_dir + "/微信截图1.png")
+    image = Image.open(base_dir + "/微信截图3.png")
     box_annotator = BoxAnnotator()
     annotated_img, boxes = box_annotator.predict_and_annotate_all(image)
     annotated_img.save(base_dir + "/test_annotated.png")

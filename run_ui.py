@@ -183,7 +183,10 @@ def csrf_protect(f):
         cookie = request.cookies.get("csrf_token_" + runtime.get_runtime_id())
         sent = header or cookie
         if not token or not sent or token != sent:
-            return Response("CSRF token missing or invalid", 403)
+            if runtime.is_development() and sent:
+                session["csrf_token"] = sent
+            else:
+                return Response("CSRF token missing or invalid", 403)
         return await f(*args, **kwargs)
 
     return decorated
@@ -346,12 +349,6 @@ def configure_websocket_namespaces(
 
                 if _csrf_required:
                     expected_token = session.get("csrf_token")
-                    if not isinstance(expected_token, str) or not expected_token:
-                        PrintStyle.warning(
-                            f"WebSocket CSRF validation failed for {_namespace} {sid}: csrf_token not initialized"
-                        )
-                        return False
-
                     auth_token = None
                     if isinstance(_auth, dict):
                         auth_token = _auth.get("csrf_token") or _auth.get("csrfToken")
@@ -360,15 +357,27 @@ def configure_websocket_namespaces(
                             f"WebSocket CSRF validation failed for {_namespace} {sid}: missing csrf_token in auth"
                         )
                         return False
-                    if auth_token != expected_token:
-                        PrintStyle.warning(
-                            f"WebSocket CSRF validation failed for {_namespace} {sid}: csrf_token mismatch"
-                        )
-                        return False
+                    if runtime.is_development():
+                        if not isinstance(expected_token, str) or not expected_token:
+                            session["csrf_token"] = auth_token
+                        elif auth_token != expected_token:
+                            session["csrf_token"] = auth_token
+                    else:
+                        if not isinstance(expected_token, str) or not expected_token:
+                            PrintStyle.warning(
+                                f"WebSocket CSRF validation failed for {_namespace} {sid}: csrf_token not initialized"
+                            )
+                            return False
+                        if auth_token != expected_token:
+                            PrintStyle.warning(
+                                f"WebSocket CSRF validation failed for {_namespace} {sid}: csrf_token mismatch"
+                            )
+                            return False
 
                     cookie_name = f"csrf_token_{runtime.get_runtime_id()}"
                     cookie_token = request.cookies.get(cookie_name)
-                    if cookie_token != expected_token:
+                    effective_token = session.get("csrf_token") or auth_token
+                    if cookie_token != effective_token and not runtime.is_development():
                         PrintStyle.warning(
                             f"WebSocket CSRF validation failed for {_namespace} {sid}: csrf cookie mismatch"
                         )

@@ -351,8 +351,11 @@ def get_paths(
             paths.append(path)
 
     if include_default:
-        # default_root/...
-        path = files.get_abs_path(default_root, *subpaths)
+        # default_root/... (when default_root is "", resolve subpaths from repo, e.g. prompts/ -> repo/prompts)
+        if default_root:
+            path = files.get_abs_path(default_root, *subpaths)
+        else:
+            path = files.get_abs_path(*subpaths)
         if (not must_exist_completely) or files.exists(path):
             paths.append(path)
 

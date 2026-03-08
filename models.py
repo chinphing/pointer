@@ -703,7 +703,7 @@ class LiteLLMEmbeddingWrapper(Embeddings):
 
 
 class LocalSentenceTransformerWrapper(Embeddings):
-    """Local wrapper for sentence-transformers models to avoid HuggingFace API calls"""
+    """Local wrapper for sentence-transformers models to avoid HuggingFace API calls. First load is saved under A0 data dir for reuse."""
 
     def __init__(
         self,
@@ -729,6 +729,11 @@ class LocalSentenceTransformerWrapper(Embeddings):
             "model_kwargs",
         }
         st_kwargs = {k: v for k, v in (kwargs or {}).items() if k in st_allowed_keys}
+
+        # Persist model under A0 data dir so first download is reused (e.g. ~/azero/tmp/models/sentence_transformers)
+        if "cache_folder" not in st_kwargs:
+            from python.helpers import files
+            st_kwargs["cache_folder"] = str(files.get_abs_path("tmp", "models", "sentence_transformers"))
 
         self.model = SentenceTransformer(model, **st_kwargs)
         self.model_name = model
@@ -774,6 +779,10 @@ def _get_litellm_chat(
     )
 
 
+# Cache for sentence-transformers (and other heavy local) embedding models to avoid reloading.
+_embedding_model_cache: dict[str, "LocalSentenceTransformerWrapper"] = {}
+
+
 def _get_litellm_embedding(
     model_name: str,
     provider_name: str,
@@ -788,12 +797,17 @@ def _get_litellm_embedding(
         provider_name, model_name, kwargs = _adjust_call_args(
             provider_name, model_name, kwargs
         )
-        return LocalSentenceTransformerWrapper(
-            provider=provider_name,
-            model=model_name,
-            model_config=model_config,
-            **kwargs,
-        )
+        # Cache key: same model + same load options => reuse one instance
+        st_opts = tuple(sorted((k, v) for k, v in (kwargs or {}).items() if k in {"device", "cache_folder"}))
+        cache_key = f"{provider_name}:{model_name}:{st_opts}"
+        if cache_key not in _embedding_model_cache:
+            _embedding_model_cache[cache_key] = LocalSentenceTransformerWrapper(
+                provider=provider_name,
+                model=model_name,
+                model_config=model_config,
+                **kwargs,
+            )
+        return _embedding_model_cache[cache_key]
 
     # use api key from kwargs or env
     api_key = kwargs.pop("api_key", None) or get_api_key(provider_name)

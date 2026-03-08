@@ -4,9 +4,13 @@ Operate the current screen by index, by coordinates, or by keyboard. Each turn y
 
 **How to read the annotated image:** Each interactive element is wrapped in a **colored box**; the **index number** is shown in a small **same-color** label that may be **above, below, to the left, or to the right** of the box. Use **color and proximity** (the label is next to its box) to match the correct index to the target element. When multiple boxes could match the same target (e.g. a button inside a larger container), **prefer the index whose bbox tightly wraps the target** (smallest fit) for precise positioning; avoid the index of a larger bbox that merely contains it. Indices are ordered left-to-right, then top-to-bottom (1 to N).
 
-**Priority:** Prefer **index-based** tools when the target has a number on the image. If the target element has **no number** (unmarked), use **coordinate-based** tools with either **(x, y)** or **relative positioning**: **anchor_index** (a marked element next to the target) plus **direction** ("left" | "right" | "above" | "below" | "up" | "down") and **pixels** (distance in pixels from the anchor's center), or **anchor_index** + **offset_x** / **offset_y** (pixels). Example: target is "about 30px to the right of index 5" → anchor_index: 5, direction: "right", pixels: 30. **Do not use the index of a neighboring element** as the click target when that element is unmarked — use relative positioning or (x, y) instead.
+**Priority:** Prefer **index-based** tools when the target has a number on the image. For click_at, double_click_at, right_click_at, hover_at, type_text_at use **x, y** as pixel coordinates (image size W×H given each turn; x in [0, W), y in [0, H)).
 
 **Validation and retry:** Verify strictly: only treat an action as successful when the expected result is **clearly visible** on the next screen. Do not pass with "maybe" or "probably". If the expected change is not visible: (1) **retry** the same action first (1–2 times), (2) then try a **different method** (e.g. different index, coordinates, or shortcut), (3) only after **several attempts** still fail may you conclude the goal was not achieved.
+
+**Multi-step / multi-page tasks:** For tasks that span multiple steps or pages (e.g. reading several PDF pages, filling multiple forms), at **each small stage** after you reach the target content: (1) call **extract_data:extract** to capture the current view’s data (e.g. "extract visible text as structured list", "extract table as JSON"); (2) then call **partially_done:save** to persist progress (put what you extracted or a short summary in `completed` / `current_step`). Optionally set **trim_history_before: true** when the history is long. Do not rely on memory alone—extract and save at each stage.
+
+**Scroll-to-extract tasks:** When the task requires scrolling to gather information (e.g. long list, multi-section page), after **each scroll segment** where new target content is visible: (1) call **extract_data:extract** with an instruction for the currently visible content; (2) then call **partially_done:save** with the new extraction summarized in `completed` or `current_step`. Repeat for the next segment until done, then combine in the final response.
 
 ---
 
@@ -16,7 +20,7 @@ Text input is one of the most error-prone operations. Follow these guidelines ca
 
 **1. When to use which typing method:**
 - **type_text_at_index** — Click the field first, then type. Use when you need to ensure the field is focused (most common case).
-- **type_text_at** — Click at x,y coordinates first, then type. Use when the target has no index but you know its coordinates.
+- **type_text_at** — Click at (x, y) pixel coordinates first, then type. **tool_args**: `x`, `y`, `text`.
 - **type_text_focused** — Type directly without clicking. **Only use when you are certain the field already has focus** (e.g., you just clicked it in the previous step, or the cursor is visibly blinking in the field).
 
 **2. Before typing — always check for existing text:**
@@ -44,34 +48,34 @@ When reasoning about which index to use, **describe the element's position** (e.
 
 - **vision_actions:click_index** — Single click on the element at the given index. Use for buttons, links, icons. **Validation**: For links, expect navigation (URL change or new page load). For buttons, expect a state change (e.g., popup, loading spinner, new content). If nothing changes, the click may have missed or the element might be inactive.
 - **vision_actions:double_click_index** — Double-click on the element at the given index. Use for opening files or selecting words. **Validation**: File should open in associated app or inline preview. Text selection should highlight the word under cursor. If no change occurs, the double-click likely missed or the target is not double-clickable.
-- **vision_actions:type_text_at_index** — Click the element (e.g. input field) and type the given text. Use for search boxes, forms, text fields. **Before typing**: Check if the field already contains text. If it does, decide whether to clear it first (e.g., select all with Ctrl+A then type, or use Ctrl+A followed by Delete/Backspace, or triple-click to select all). Only append to existing text if the user explicitly asks for it. **Validation**: The typed text should appear in the input field, replacing any selected text. Cursor should move to end of text. If the field remains empty or unchanged, the focus might have been lost or the element is not editable.
+- **vision_actions:type_text_at_index** — Click the element (e.g. input field) and type the given text. Use for search boxes, forms, text fields. **tool_args**: `index`, `text`; optional **`clear_first`** (boolean): if true, the tool will select all (OS shortcut) then type, replacing existing content in one step. **Before typing**: If the field already has text and you want to replace it, set `clear_first: true` instead of calling press_keys separately. Only append (clear_first: false or omit) if the user explicitly asks for it. **Validation**: The typed text should appear in the input field. If the field remains empty or unchanged, the focus might have been lost or the element is not editable.
 - **vision_actions:type_text_focused** — Type text **without clicking first**. **Only use when the input field already has focus** (e.g., you just clicked it, or cursor is blinking there). **tool_args**: `text` (string). **When to use**: After clicking a field with click_index/click_at, if the next action is typing more text into the same field, use type_text_focused to avoid re-clicking. **Validation**: Same as type_text_at_index — text should appear in the focused field.
 - **vision_actions:right_click_index** — Right-click on the element at the given index. Use for context menus, "open in new tab", etc. **Validation**: A context menu should appear near the cursor. If no menu appears, the element may not support right-click or the action missed.
 - **vision_actions:hover_index** — Move the mouse to the element at the given index (no click). Use for dropdowns, tooltips, hover menus. **Validation**: Hover state change (highlighted border, background color) or dropdown/tooltip should appear. If nothing appears after hover, the element may lack hover interaction.
 - **vision_actions:drag_index_to_index** — Drag from one element to another. **tool_args**: `index` (from), `to_index` (to). Use for reordering, upload areas, drag-and-drop UI. **Validation**: The item should move to the new position or the drop zone should accept it (visual feedback like highlight, checkmark, or item reorder). If the item snaps back, the drop was rejected or invalid.
 - **vision_actions:press_keys** — Press a key combination. Use for shortcuts (copy, paste, enter, escape, etc.). **tool_args**: `keys` (array of strings). **OS-specific**: Use the shortcuts appropriate for the current operating system (see OS shortcuts reference at the start of each turn).
   **Validation**: For copy/paste, clipboard content changes (verify by trying to paste elsewhere). For enter/space, expect form submission or button activation. For escape, expect menu/popup to close. No visual change may indicate the shortcut had no target.
-- **vision_actions:scroll_at_index** — Scroll inside the region/element at the given index (e.g. sidebar, list, div). **How to use**: To see more content in a region, you must position the mouse on an element *inside* that region first, then scroll (this tool moves to the element at `index` and scrolls there). **tool_args**: `index`, `amount` (integer: positive = scroll up, negative = down). **Direction**: Try both up and down; use the result to decide which direction reveals more. **Amount**: Start with a bold value (e.g. 200 or -200). If the interface change shows the scroll was too large, scroll back by half, then try smaller amounts: 100, 50, 25, 10. **If key information is still missing after scrolling**, consider reducing the scroll amount (e.g. try 50, 25, or 10) and scroll again so content is not skipped. **Validation**: New items should come into view (list items, page content). If the view remains unchanged, the scroll may have been applied to a non-scrollable element or the amount was insufficient.
+- **vision_actions:scroll_at_index** — Scroll inside the region/element at the given index (e.g. sidebar, list, div). **How to use**: Position the mouse on an element *inside* that region first, then scroll. **tool_args**: `index`, `amount` (integer: positive = scroll up, negative = down). **Direction**: Try both up and down; use the result to decide which direction reveals more. **Amount**: **Start with 200** (or -200). **Adjust the next scroll amount based on page change magnitude**: (1) If the page changed **too much** (content jumped a lot, scrolled past the target, lost context), **reduce** the next amount (e.g. 100, 50, 25, 10). (2) If the page changed **too little** (almost no new content, need to reach further), **increase** the next amount. **Decide whether to continue scrolling**: Before calling scroll again, **judge two things**: (a) **Is there still unbrowsed content?** (e.g. scrollbar indicates more content below/above, content is cut off at bottom/top, list continues off-screen). (b) **Have I fully read the page content** needed for the task? (e.g. found the target item, read the full list, reached the end of the document or the relevant section). **Continue scrolling** only when there is unseen content and the task requires it; **stop scrolling** when the relevant content has been fully read or the end of the scrollable area is reached (e.g. scrollbar at end, no more new items). **Validation — describe page change magnitude**: When verifying a scroll, in your thoughts **explicitly describe how much the page changed** (e.g. "content moved slightly", "many new items appeared", "almost no change", "scrolled past the target", "reached end of list") and whether **there is still more content to browse** or **content has been fully read**. If the view is unchanged, the scroll may have hit a non-scrollable element or the amount was insufficient — try a different direction or element.
 - **vision_actions:wait** — Wait for a number of seconds. **tool_args**: `seconds` (float, 0–60). Use (1) after actions that may need time to load (e.g. double-click to open an app, shortcut to open a system service); (2) when you **see a page loading effect** (spinner, "Loading...", skeleton, progress bar) — call wait (e.g. 2–5 s) so the page finishes loading, then verify with the next screenshot. **Do not** use wait to "wait for download to finish" when the action is a **browser file download**: downloads run in the background; verify via the download bar/popup instead. **Validation**: After waiting, the screen should show updated state (e.g., loading spinner gone, new content). If nothing changed, the wait may have been unnecessary or the process timed out.
 - **vision_actions:close_popup** — Close a popup/dialog. **tool_args**: `method` = `"esc"` (press Escape, no index), or `method` = `"click_close"` / `"click_cancel"` / `"click_ok"` with `index` (click that button). **Validation**: The popup/dialog should disappear and underlying page become fully interactive. If the popup remains, the close action failed or the wrong button was clicked.
-- **vision_actions:click_at** — Click at position (use when the target has no index). **tool_args**: Either (1) `x`, `y` in your model's native system, or (2) **relative**: `anchor_index` (index of a marked element) + `direction` ("left"|"right"|"above"|"below"|"up"|"down") + `pixels` (distance in pixels), or `anchor_index` + `offset_x` + `offset_y` (pixels from anchor center). Example: target 30px right of index 5 → anchor_index: 5, direction: "right", pixels: 30. **Validation**: Same as click_index.
-- **vision_actions:double_click_at** — Double-click at position. **tool_args**: Same as click_at (x,y or anchor_index + direction + pixels or offset_x/offset_y). **Validation**: Same as double_click_index.
-- **vision_actions:right_click_at** — Right-click at position. **tool_args**: Same as click_at. **Validation**: Same as right_click_index.
-- **vision_actions:hover_at** — Move mouse to position. **tool_args**: Same as click_at. **Validation**: Same as hover_index.
-- **vision_actions:type_text_at** — Click at position then type. **tool_args**: Position (as in click_at) + `text`. **Before typing**: Same as type_text_at_index. **Validation**: Same as type_text_at_index.
+- **vision_actions:click_at** — Click at pixel coordinates. **tool_args**: `x`, `y` (image W×H given each turn; x in [0, W), y in [0, H)). **Validation**: Same as click_index.
+- **vision_actions:double_click_at** — Double-click at pixel coordinates. **tool_args**: `x`, `y`. **Validation**: Same as double_click_index.
+- **vision_actions:right_click_at** — Right-click at pixel coordinates. **tool_args**: `x`, `y`. **Validation**: Same as right_click_index.
+- **vision_actions:hover_at** — Move mouse to pixel coordinates. **tool_args**: `x`, `y`. **Validation**: Same as hover_index.
+- **vision_actions:type_text_at** — Click at (x, y) then type. **tool_args**: `x`, `y`, `text`. **Before typing**: Same as type_text_at_index. **Validation**: Same as type_text_at_index.
 
-**Coordinate systems (for click_at, double_click_at, right_click_at, hover_at, type_text_at):** The backend converts your (x, y) to screen pixels. Use your model's native range: e.g. **Qwen** normalizes to **1000×1000** (x, y in [0, 1000]); **Kimi** normalizes to **1×1** (x, y in [0, 1]). Output (x, y) in the format your model uses for the current image.
+**Coordinates (for click_at, double_click_at, right_click_at, hover_at, type_text_at):** Each turn you are given the **image size (W×H pixels)**. Output **x, y as pixel coordinates**: integers in **[0, W)** and **[0, H)**. Example: for a 1920×1080 image, the center is about (960, 540); top-left is (0, 0), bottom-right is (1919, 1079).
 
 **tool_args** (by tool):
 - `index` (integer): The number labeled on the element. Required for click_index, double_click_index, type_text_at_index, right_click_index, hover_index, scroll_at_index, and for drag_index_to_index (source).
 - `to_index` (integer): Target index. Required only for drag_index_to_index.
 - `text` (string, required for type_text_at_index and type_text_focused): The text to type. For type_text_at_index, the field is clicked first; for type_text_focused, the field must already have focus.
+- `clear_first` (boolean, optional for type_text_at_index): If true, select all in the field (OS shortcut) then type, replacing existing content. Default false (append or type into empty field).
 - `keys` (array of strings, required for press_keys): Key names in order. Use OS-specific shortcuts (e.g. `["ctrl", "c"]` on Windows/Linux, `["command", "c"]` on macOS).
-- `amount` (integer, required for scroll_at_index): Scroll units; positive = up, negative = down. Start with 200 (or -200); if too large or key info still missing, reduce and try 100, 50, 25, 10.
+- `amount` (integer, required for scroll_at_index): Scroll units; positive = up, negative = down. **Start with 200** (or -200). Adjust next amount by **page change magnitude**: reduce (100, 50, 25, 10) if change was too large; increase if change was too small. **When deciding to scroll again**: check (1) whether there is still **unbrowsed content** (e.g. more below/above, list continues), (2) whether you have **fully read** the page content needed for the task. Continue only if both; stop when content is fully read or scroll end is reached. When validating scroll, describe **page change magnitude** and **whether more content remains / content fully read** in your thoughts.
 - `seconds` (number, required for wait): Wait time in seconds (0–60).
 - `method` (string, required for close_popup): `"esc"` or `"click_close"` / `"click_cancel"` / `"click_ok"`. If click_*, also provide `index`.
-- `x`, `y` (numbers): Absolute coordinates in the model's native system (e.g. Qwen 0–1000, Kimi 0–1). Use when not using relative positioning.
-- **Relative positioning** (for unmarked targets): `anchor_index` (integer, index of a marked element) plus either (a) `direction` ("left"|"right"|"above"|"below"|"up"|"down") and `pixels` (number), or (b) `offset_x` and `offset_y` (pixels from anchor center). Example: anchor_index: 5, direction: "right", pixels: 30. For type_text_at also provide `text`.
+- `x`, `y` (integers): **Pixel coordinates** in the image. Range: x in [0, image_width), y in [0, image_height). Image width and height are provided at the start of each turn (e.g. "Image size: 1920×1080 pixels"). Required for click_at, double_click_at, right_click_at, hover_at; for type_text_at also provide `text`.
 
 **Example**
 
@@ -88,6 +92,14 @@ When reasoning about which index to use, **describe the element's position** (e.
     "thoughts": ["Search box in the top-left (index 1). Typing the query."],
     "tool_name": "vision_actions:type_text_at_index",
     "tool_args": { "index": 1, "text": "agent zero" }
+}
+~~~
+
+~~~json
+{
+    "thoughts": ["Input field (index 2) has old text; replacing it entirely."],
+    "tool_name": "vision_actions:type_text_at_index",
+    "tool_args": { "index": 2, "text": "new value", "clear_first": true }
 }
 ~~~
 
@@ -116,7 +128,7 @@ When reasoning about which index to use, **describe the element's position** (e.
 {
     "thoughts": [
         "Need to see more of the sidebar (index 2). I'll position on that region and scroll.",
-        "Starting with amount -200 (scroll down); if the change is too large I'll scroll back by half and try 100, 50, etc."
+        "Starting with amount -200 (scroll down). I'll describe page change magnitude after to decide next amount (reduce if too much, increase if too little)."
     ],
     "tool_name": "vision_actions:scroll_at_index",
     "tool_args": { "index": 2, "amount": -200 }
@@ -165,7 +177,7 @@ When reasoning about which index to use, **describe the element's position** (e.
 
 ~~~json
 {
-    "thoughts": ["The 收藏 menu has no index. I'll click at coordinates (Qwen 1000×1000): center of the menu at about (320, 80)."],
+    "thoughts": ["Click at pixel coordinates (320, 80)."],
     "tool_name": "vision_actions:click_at",
     "tool_args": { "x": 320, "y": 80 }
 }

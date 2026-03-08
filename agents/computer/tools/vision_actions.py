@@ -5,7 +5,9 @@ Dispatches click_index / double_click_index / type_text_at_index using index_map
 from __future__ import annotations
 
 import os
+import platform
 import sys
+import time
 from typing import Any, Dict, List
 
 from agent import Agent, LoopData
@@ -42,9 +44,9 @@ class VisionActionsTool(Tool):
     def _resolve_index(
         self, index_map: Dict[int, Dict[str, float]], index: int
     ) -> List[int]:
-        """index_map -> 屏幕像素坐标 [x, y]。"""
+        """Resolve index_map to screen pixel coordinates [x, y]."""
         if not index_map:
-            raise ValueError("index_map is empty. 请先通过视觉路由生成 index_map。")
+            raise ValueError("index_map is empty. Ensure screen inject (vision route) has run to generate index_map.")
         if index not in index_map:
             raise ValueError(f"index {index} not found in index_map.")
         entry = index_map[index]
@@ -56,7 +58,7 @@ class VisionActionsTool(Tool):
         return [x, y]
 
     def _resolve_coord(self, x_val: float, y_val: float) -> List[int]:
-        """将模型给出的归一化坐标 (x, y) 转为屏幕像素 [sx, sy]。"""
+        """Convert model-normalized coordinates (x, y) to screen pixels [sx, sy]."""
         screen_info = self.agent.get_data("computer_vision_screen_info") or {}
         w = screen_info.get("width")
         h = screen_info.get("height")
@@ -66,9 +68,10 @@ class VisionActionsTool(Tool):
             raise ValueError(
                 "No screen info. Ensure the computer screen inject ran for this turn."
             )
-        system = getattr(
+        # When inject set pixel mode, use it; else config (qwen/kimi) or default qwen
+        system = self.agent.get_data("computer_vision_coordinate_system") or getattr(
             self.agent.config, "vision_coordinate_system", "qwen"
-        )  # qwen: 1000×1000, kimi: 1×1
+        )
         sx, sy = normalized_to_screen(
             float(x_val), float(y_val), system, int(w), int(h), int(mon_left), int(mon_top)
         )
@@ -286,7 +289,13 @@ class VisionActionsTool(Tool):
             return Response(message=result, break_loop=False)
         if method == "type_text_at_index":
             text = args.get("text", "")
+            clear_first = args.get("clear_first", False) if isinstance(args.get("clear_first"), bool) else str(args.get("clear_first", "")).lower() in ("true", "1", "yes")
             click_result = actions._click(pos)
+            if clear_first:
+                # Select all (OS-specific) then type to replace existing content
+                mod = "command" if platform.system() == "Darwin" else "ctrl"
+                sel_result = actions._press_keys([mod, "a"])
+                time.sleep(0.1)
             type_result = actions._type_text(str(text))
             return Response(
                 message=f"{click_result} {type_result}", break_loop=False
@@ -336,7 +345,13 @@ class VisionActionsTool(Tool):
                     message=f"Invalid 'amount' value: {amount_arg}.",
                     break_loop=False,
                 )
-            result = actions._scroll_at(pos, amount)
+            # Convert pixel-like amount to actual scroll count: amount/30, at least 1 step when non-zero
+            scroll_count = round(amount / 30)
+            if amount > 0 and scroll_count < 1:
+                scroll_count = 1
+            elif amount < 0 and scroll_count > -1:
+                scroll_count = -1
+            result = actions._scroll_at(pos, scroll_count)
             return Response(message=result, break_loop=False)
 
         return Response(

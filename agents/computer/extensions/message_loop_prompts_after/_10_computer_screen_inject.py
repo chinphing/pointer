@@ -297,6 +297,7 @@ class ComputerScreenInject(Extension):
             self.agent.set_data("computer_vision_index_map", {})
             err_preview = "No interactive elements detected."
 
+        self.agent.set_data("computer_vision_coordinate_system", "pixel")
         self.agent.set_data(
             "computer_vision_screen_info",
             {
@@ -339,14 +340,19 @@ class ComputerScreenInject(Extension):
         content.append({"type": "text", "text": env_text})
         if prev_action_block:
             content.append({"type": "text", "text": prev_action_block})
+        image_size_instruction = (
+            f" Image size: {w}×{h} pixels. "
+            "For coordinate-based tools (click_at, double_click_at, right_click_at, hover_at, type_text_at), output x and y as **pixel coordinates** (integers in [0, {}) and [0, {})).".format(w, h)
+        )
         content.append({
             "type": "text",
             "text": (
                 "Current screen: (1) raw, (2) annotated with indices; then zoomed regions. "
                 + annotation_help
-                + " Prefer index-based tools when the target has a number; if the target has no number, use coordinate-based tools (click_at, etc.) with the model's native coordinates (x, y)."
+                + image_size_instruction
+                + " Prefer index-based tools when the target has a number; if the target has no number, use coordinate-based tools (click_at, etc.) with x, y in pixels."
                 + valid_indices_text
-                + " When referring to elements, describe their position (e.g. top-left, center, bottom-right, 左上/右上/左下/右下)."
+                + " When referring to elements, describe their position (e.g. top-left, center, bottom-right)."
             ),
         })
         if not index_map and err_preview:

@@ -485,8 +485,10 @@ class CodeExecution(Tool):
             return None
 
         normalized = files.normalize_a0_path(path)
-        await runtime.call_development_function(make_dir, normalized)
-        return normalized
+        # Resolve to actual filesystem path in dev (e.g. /a0/usr/workdir -> ~/azero/usr/workdir)
+        path_for_fs = files.fix_dev_path(normalized)
+        await runtime.call_development_function(make_dir, path_for_fs)
+        return path_for_fs
 
 def make_dir(path: str):
     import os

@@ -524,6 +524,13 @@ For developers or users who need to run Agent Zero directly on their system, see
 
 Agent Zero settings can be automatically configured using environment variables with the `A0_SET_` prefix in your `.env` file. This enables automated deployments without manual configuration.
 
+**A0 data root (path `/a0`):**
+
+The path that corresponds to `/a0` in the app (uploads, workdir, usr data) is configurable. In Docker it is the container project root. In local development it defaults to `~/azero`. To override, set one of:
+
+- `A0_ROOT` — e.g. `A0_ROOT=~/azero` or `A0_ROOT=/opt/agent-zero-data`
+- `A0_SET_a0_root_path` — same value; also used as the settings key for the UI
+
 **Usage:**
 
 Add variables to your `.env` file in the format:

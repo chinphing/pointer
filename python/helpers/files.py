@@ -505,9 +505,39 @@ def make_dirs(relative_path: str):
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
 
+# Top-level dirs that live under repo root (code/conf); all others live under A0 root (data).
+_REPO_RELATIVE_DIRS = ("conf", "agents", "lib", "webui", "skills", "python", "prompts", "knowledge")
+
+
+def get_a0_root() -> str:
+    """
+    Root directory for A0 data (usr, tmp, workdir, etc.).
+    In Docker this is the same as the repo (mounted at /a0); in dev default is ~/azero.
+    """
+    env_root = os.environ.get("A0_ROOT") or os.environ.get("A0_SET_a0_root_path")
+    if env_root:
+        return os.path.abspath(os.path.expanduser(env_root))
+    from python.helpers import runtime
+    if runtime.is_dockerized():
+        return get_base_dir()
+    return os.path.abspath(os.path.expanduser("~/azero"))
+
+
 def get_abs_path(*relative_paths):
-    "Convert relative paths to absolute paths based on the base directory."
-    return os.path.join(get_base_dir(), *relative_paths)
+    "Convert relative paths to absolute paths. Repo-only dirs (conf, agents, lib, webui, skills, python, prompts, knowledge) use repo root; rest use A0 root (default ~/azero in dev)."
+    if not relative_paths or relative_paths == ("",):
+        return get_a0_root()
+    first = relative_paths[0]
+    # '.' explicitly means repo root (e.g. for relpath base in discovery)
+    if first == ".":
+        rest = relative_paths[1:] if len(relative_paths) > 1 else ()
+        return os.path.join(get_base_dir(), *rest) if rest else get_base_dir()
+    # First path segment (e.g. 'conf' from 'conf/workdir.gitignore') decides repo vs A0 root
+    first_segment = first.split(os.sep)[0].split("/")[0] if first else ""
+    if first_segment in _REPO_RELATIVE_DIRS:
+        return os.path.join(get_base_dir(), *relative_paths)
+    return os.path.join(get_a0_root(), *relative_paths)
+
 
 def get_abs_path_dockerized(*relative_paths):
     "Ensures the abs path is dockerized (i.e. /a0/... path)"
@@ -529,17 +559,23 @@ def deabsolute_path(path: str):
 
 
 def fix_dev_path(path: str):
-    "On dev environment, convert /a0/... paths to local absolute paths"
-    from python.helpers.runtime import is_development
-
-    if is_development():
-        if path.startswith("/a0/"):
-            path = path.replace("/a0/", "")
+    "On dev environment, convert /a0/... paths to local absolute paths under get_a0_root()."
+    if path.startswith("/a0/"):
+        rel = path[4:].lstrip("/")
+        return os.path.join(get_a0_root(), rel) if rel else get_a0_root()
+    if path == "/a0" or (path.startswith("/a0") and path[3:4] in ("", "/")):
+        return get_a0_root()
+    if os.path.isabs(path):
+        return path
     return get_abs_path(path)
 
 
 def normalize_a0_path(path: str):
-    "Convert absolute paths into /a0/... paths"
+    "Convert absolute paths under A0 root (or repo in docker) into /a0/... paths."
+    a0_root = get_a0_root()
+    if is_in_dir(path, a0_root):
+        rel = os.path.relpath(path, a0_root)
+        return "/a0/" + rel if rel != "." else "/a0"
     if is_in_base_dir(path):
         deabs = deabsolute_path(path)
         return "/a0/" + deabs

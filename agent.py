@@ -869,33 +869,31 @@ class Agent:
 
             tool = None  # Initialize tool to None
 
-            # Try getting tool from MCP first
-            try:
-                import python.helpers.mcp_handler as mcp_helper
-
-                mcp_tool_candidate = mcp_helper.MCPConfig.get_instance().get_tool(
-                    self, tool_name
-                )
-                if mcp_tool_candidate:
-                    tool = mcp_tool_candidate
-            except ImportError:
-                PrintStyle(
-                    background_color="black", font_color="yellow", padding=True
-                ).print("MCP helper module not found. Skipping MCP tool lookup.")
-            except Exception as e:
-                PrintStyle(
-                    background_color="black", font_color="red", padding=True
-                ).print(f"Failed to get MCP tool '{tool_name}': {e}")
-
-            # Fallback to local get_tool if MCP tool was not found or MCP lookup failed
+            # Prefer local tools (no remote call); only try MCP if local does not provide the tool
+            tool = self.get_tool(
+                name=tool_name,
+                method=tool_method,
+                args=tool_args,
+                message=msg,
+                loop_data=self.loop_data,
+            )
             if not tool:
-                tool = self.get_tool(
-                    name=tool_name,
-                    method=tool_method,
-                    args=tool_args,
-                    message=msg,
-                    loop_data=self.loop_data,
-                )
+                try:
+                    import python.helpers.mcp_handler as mcp_helper
+
+                    mcp_tool_candidate = mcp_helper.MCPConfig.get_instance().get_tool(
+                        self, tool_name
+                    )
+                    if mcp_tool_candidate:
+                        tool = mcp_tool_candidate
+                except ImportError:
+                    PrintStyle(
+                        background_color="black", font_color="yellow", padding=True
+                    ).print("MCP helper module not found. Skipping MCP tool lookup.")
+                except Exception as e:
+                    PrintStyle(
+                        background_color="black", font_color="red", padding=True
+                    ).print(f"Failed to get MCP tool '{tool_name}': {e}")
 
             if tool:
                 self.loop_data.current_tool = tool  # type: ignore

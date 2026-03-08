@@ -45,7 +45,7 @@ if hasattr(time, 'tzset'):
     time.tzset()
 
 # initialize the internal Flask server
-webapp = Flask("app", static_folder=get_abs_path("./webui"), static_url_path="/")
+webapp = Flask("app", static_folder=get_abs_path("webui"), static_url_path="/")
 webapp.secret_key = os.getenv("FLASK_SECRET_KEY") or secrets.token_hex(32)
 
 UPLOAD_LIMIT_BYTES = 5 * 1024 * 1024 * 1024

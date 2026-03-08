@@ -37,14 +37,14 @@ class ActionTools:
             pyautogui.click(*position)
             time.sleep(0.3)
         self.last_action = {"tool": "click", "tool_input": {"position": position}}
-        result = f"已在位置 [{position[0]}, {position[1]}] 点击。"
+        result = f"Clicked at position [{position[0]}, {position[1]}]."
         logger.info(result)
         return result
 
     def _double_click(self, position: List[int]) -> str:
         self._check_stop()
         if not self.dry_run:
-            pyautogui.doubleClick(*position)
+            pyautogui.click(*position, clicks=2, interval=0.1)
             time.sleep(0.3)
         self.last_action = {"tool": "double_click", "tool_input": {"position": position}}
         result = f"已在位置 [{position[0]}, {position[1]}] 双击。"
@@ -57,7 +57,7 @@ class ActionTools:
             pyautogui.rightClick(*position)
             time.sleep(0.3)
         self.last_action = {"tool": "right_click", "tool_input": {"position": position}}
-        result = f"已在位置 [{position[0]}, {position[1]}] 右键点击。"
+        result = f"Right-clicked at position [{position[0]}, {position[1]}]."
         logger.info(result)
         return result
 
@@ -72,7 +72,7 @@ class ActionTools:
         pyperclip.copy(old)
         time.sleep(0.2)
         self.last_action = {"tool": "type_text", "tool_input": {"text": text}}
-        result = f"已输入文本: '{text}'。"
+        result = f"Typed text: '{text}'."
         logger.info(result)
         return result
 
@@ -85,7 +85,7 @@ class ActionTools:
             time.sleep(0.3)
         self.last_action = {"tool": "press_keys", "tool_input": {"keys": keys}}
         key_combo = "+".join(keys)
-        result = f"已按下按键组合: {key_combo}。"
+        result = f"Pressed key combination: {key_combo}."
         logger.info(result)
         return result
 
@@ -95,8 +95,8 @@ class ActionTools:
             pyautogui.scroll(int(amount))
             time.sleep(0.2)
         self.last_action = {"tool": "scroll", "tool_input": {"amount": amount}}
-        direction = "向上" if amount > 0 else "向下"
-        result = f"已{direction}滚动 {abs(amount)} 个单位。"
+        direction = "up" if amount > 0 else "down"
+        result = f"Scrolled {direction} {abs(amount)} units."
         logger.info(result)
         return result
 
@@ -109,8 +109,8 @@ class ActionTools:
             pyautogui.scroll(int(amount))
             time.sleep(0.2)
         self.last_action = {"tool": "scroll_at", "tool_input": {"position": position, "amount": amount}}
-        direction = "向上" if amount > 0 else "向下"
-        result = f"已在位置 [{position[0]}, {position[1]}] {direction}滚动 {abs(amount)} 个单位。"
+        direction = "up" if amount > 0 else "down"
+        result = f"Scrolled {direction} {abs(amount)} units at position [{position[0]}, {position[1]}]."
         logger.info(result)
         return result
 
@@ -118,7 +118,7 @@ class ActionTools:
         self._check_stop()
         time.sleep(float(seconds))
         self.last_action = {"tool": "wait", "tool_input": {"seconds": seconds}}
-        result = f"已等待 {seconds} 秒。"
+        result = f"Waited {seconds} seconds."
         logger.info(result)
         return result
 
@@ -128,7 +128,7 @@ class ActionTools:
             pyautogui.moveTo(position[0], position[1])
             time.sleep(0.2)
         self.last_action = {"tool": "hover", "tool_input": {"position": position}}
-        result = f"已将鼠标移至位置 [{position[0]}, {position[1]}]。"
+        result = f"Moved mouse to position [{position[0]}, {position[1]}]."
         logger.info(result)
         return result
 
@@ -147,7 +147,7 @@ class ActionTools:
             "tool": "drag",
             "tool_input": {"from_position": from_position, "to_position": to_position},
         }
-        result = f"已从 [{from_position[0]}, {from_position[1]}] 拖拽至 [{to_position[0]}, {to_position[1]}]。"
+        result = f"Dragged from [{from_position[0]}, {from_position[1]}] to [{to_position[0]}, {to_position[1]}]."
         logger.info(result)
         return result
 
@@ -158,12 +158,12 @@ class ActionTools:
                 pyautogui.press("esc")
                 time.sleep(0.5)
             self.last_action = {"tool": "close_popup", "tool_input": {"method": method}}
-            result = "已按下 Esc 关闭弹窗。"
+            result = "Pressed Esc to close popup."
             logger.info(result)
             return result
         if method in ("click_close", "click_cancel", "click_ok"):
             if not position:
-                return "错误: 点击关闭/取消/确定需要提供 position 参数。"
+                return "Error: position is required for click_close/click_cancel/click_ok."
             logger.debug("close_popup %s at %s", method, position)
             if not self.dry_run:
                 pyautogui.click(position[0], position[1])
@@ -173,19 +173,17 @@ class ActionTools:
                 "tool_input": {"method": method, "position": position},
             }
             button_name = method.replace("click_", "")
-            button_map = {"close": "关闭", "cancel": "取消", "ok": "确定"}
-            button_cn = button_map.get(button_name, button_name)
-            result = f"已点击{button_cn}按钮，位置: [{position[0]}, {position[1]}]。"
+            result = f"Clicked {button_name} button at position [{position[0]}, {position[1]}]."
             logger.info(result)
             return result
-        result = "未知方法，请使用 'esc'、'click_close'、'click_cancel' 或 'click_ok'。"
+        result = "Unknown method; use 'esc', 'click_close', 'click_cancel', or 'click_ok'."
         logger.info(result)
         return result
 
     def _done(self) -> str:
         self._check_stop()
         self.last_action = {"tool": "done", "tool_input": {}}
-        result = "任务已成功完成。目标已达成。"
+        result = "Task completed successfully. Goal achieved."
         logger.info(result)
         return result
 

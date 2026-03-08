@@ -95,6 +95,7 @@ class Settings(TypedDict):
     agent_memory_subdir: str
     agent_knowledge_subdir: str
 
+    a0_root_path: str
     workdir_path: str
     workdir_show: bool
     workdir_max_depth: int
@@ -568,6 +569,7 @@ def get_default_settings() -> Settings:
         agent_profile=get_default_value("agent_profile", "agent0"),
         agent_memory_subdir=get_default_value("agent_memory_subdir", "default"),
         agent_knowledge_subdir=get_default_value("agent_knowledge_subdir", "custom"),
+        a0_root_path=get_default_value("a0_root_path", files.get_a0_root()),
         workdir_path=get_default_value("workdir_path", files.get_abs_path_dockerized("usr/workdir")),
         workdir_show=get_default_value("workdir_show", True),
         workdir_max_depth=get_default_value("workdir_max_depth", 5),
@@ -580,7 +582,7 @@ def get_default_settings() -> Settings:
         rfc_password="",
         rfc_port_http=get_default_value("rfc_port_http", 55080),
         rfc_port_ssh=get_default_value("rfc_port_ssh", 55022),
-        shell_interface=get_default_value("shell_interface", "local" if runtime.is_dockerized() else "ssh"),
+        shell_interface=get_default_value("shell_interface", "local"),
         websocket_server_restart_enabled=get_default_value("websocket_server_restart_enabled", True),
         uvicorn_access_logs_enabled=get_default_value("uvicorn_access_logs_enabled", False),
         stt_model_size=get_default_value("stt_model_size", "base"),

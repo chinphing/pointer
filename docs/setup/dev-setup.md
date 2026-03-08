@@ -169,6 +169,8 @@ A0_SET_memory_recall_interval=5
 
 These environment variables automatically override the hardcoded defaults in `get_default_settings()` without modifying code. Useful for testing different configurations or multi-environment setups.
 
+To use a different directory for A0 data (uploads, workdir, settings, etc.) instead of the default `~/azero`, set `A0_ROOT` or `A0_SET_a0_root_path` in your `.env`, e.g. `A0_ROOT=/path/to/your/azero`.
+
 ## Want to build your docker image?
 - You can use the `DockerfileLocal` to build your docker image.
 - Navigate to your project root in the terminal and run `docker build -f DockerfileLocal -t agent-zero-local --build-arg CACHE_DATE=$(date +%Y-%m-%d:%H:%M:%S) .`

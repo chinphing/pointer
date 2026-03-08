@@ -95,28 +95,10 @@ async def call_development_function(func: Callable[..., T], *args, **kwargs) -> 
 async def call_development_function(
     func: Union[Callable[..., T], Callable[..., Awaitable[T]]], *args, **kwargs
 ) -> T:
-    if is_development():
-        url = _get_rfc_url()
-        password = _get_rfc_password()
-        # Normalize path components to build a valid Python module path across OSes
-        module_path = Path(
-            files.deabsolute_path(func.__code__.co_filename)
-        ).with_suffix("")
-        module = ".".join(module_path.parts)  # __module__ is not reliable
-        result = await rfc.call_rfc(
-            url=url,
-            password=password,
-            module=module,
-            function_name=func.__name__,
-            args=list(args),
-            kwargs=kwargs,
-        )
-        return cast(T, result)
-    else:
-        if inspect.iscoroutinefunction(func):
-            return await func(*args, **kwargs)
-        else:
-            return func(*args, **kwargs)  # type: ignore
+    # Development: always run locally (no RFC). Non-development (e.g. docker): also local.
+    if inspect.iscoroutinefunction(func):
+        return await func(*args, **kwargs)
+    return func(*args, **kwargs)  # type: ignore
 
 
 async def handle_rfc(rfc_call: rfc.RFCCall):

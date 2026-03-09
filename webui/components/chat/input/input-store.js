@@ -85,6 +85,18 @@ const model = {
     }
   },
 
+  async stopAgent() {
+    try {
+      const context = globalThis.getContext?.();
+      if (!context || !globalThis.sendJsonData) return;
+      await globalThis.sendJsonData("/chat_stop", { context });
+    } catch (e) {
+      if (globalThis.toastFetchError) {
+        globalThis.toastFetchError("Error stopping agent", e);
+      }
+    }
+  },
+
   async nudge() {
     try {
       const context = globalThis.getContext();

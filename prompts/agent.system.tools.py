@@ -16,7 +16,7 @@ class BuidToolsPrompt(VariablesPlugin):
                 folders.append(files.get_abs_path(backup_dir))
 
         # Only when profile is "computer": add agents/computer/prompts so computer-specific
-        # tools (partially_done, vision_actions, extract_data, etc.) are loaded for this
+        # tools (extract_data, task_done, vision_actions, etc.) are loaded for this
         # profile only; agent0 and other profiles are unchanged.
         agent = kwargs.get("_agent")
         if agent and getattr(getattr(agent, "config", None), "profile", None) == "computer":

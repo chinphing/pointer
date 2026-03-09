@@ -17,7 +17,7 @@ RTREE_NEAREST_K = 5
 
 
 def _sort_boxes_lrtb(
-    boxes: Iterable[Sequence[float]], height: int
+    boxes: Iterable[Sequence[float]], cell_h: int = 20
 ) -> List[Sequence[float]]:
     """
     Sort boxes left-to-right, then top-to-bottom so that nearby elements
@@ -26,7 +26,6 @@ def _sort_boxes_lrtb(
     boxes = list(boxes)
     if not boxes:
         return []
-    cell_h = 20
 
     def row_key(box: Sequence[float]) -> Tuple[int, float]:
         x1, y1, x2, y2 = float(box[0]), float(box[1]), float(box[2]), float(box[3])
@@ -223,7 +222,8 @@ class BoxAnnotator:
         detections = self.model.predict(image, threshold=threshold)
         boxes = detections.xyxy
         scores = detections.confidence
-        return list(zip(boxes, scores))
+        boxes_with_scores = list(zip(boxes, scores))
+        return list(filter(lambda x: sum(x[0]) > 1e-4, boxes_with_scores))
 
     def predict_with_ocr(self, image: Image.Image, threshold: float = 0.8, padding: int = 3) -> Iterable[Sequence[float]]:
         """
@@ -438,8 +438,8 @@ class BoxAnnotator:
         boxes_with_scores_ocr = self.predict_with_ocr(image, padding=padding)
         boxes_with_scores = [*boxes_with_scores, *boxes_with_scores_ocr]
         boxes_with_scores_trimmed = trim_by_overlab_optimize(boxes_with_scores, overlap_threshold=overlap_threshold)
-        boxes_sorted = _sort_boxes_lrtb([b[0] for b in boxes_with_scores_trimmed], image.height)
-        annotated_img = self.annotate(boxes_sorted, image, start_index=1)
+        boxes_sorted = _sort_boxes_lrtb([b[0] for b in boxes_with_scores_trimmed])
+        annotated_img = self.annotate(boxes_sorted, image)
         return annotated_img, boxes_sorted
 
 if __name__ == "__main__":

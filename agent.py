@@ -815,7 +815,7 @@ class Agent:
             rate_limiter_callback=(
                 self.rate_limiter_callback if not background else None
             ),
-            explicit_caching=explicit_caching,
+            explicit_caching=explicit_caching
         )
 
         return response, reasoning

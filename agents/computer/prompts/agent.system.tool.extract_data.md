@@ -1,24 +1,26 @@
 ### extract_data
 
-Extract structured data from the **current screen** using the vision model.
+Extract visible content from the **current screen** as **markdown** and append it to a **task-specific temp file**. Use when you need to **read or extract page data for temporary storage** (e.g. before scrolling, because after scrolling the current content is no longer visible).
 
-**When to use vs. when to do it in thoughts:** For **simple, small data** (e.g. a few items, one short paragraph, a single number or label), you can **read the screen and write the result directly in your thoughts** or in the next response—no need to call extract_data. Use **extract_data:extract** only when the data is **complex or large**: e.g. **tables** (multiple rows/columns), **many fields** (long lists, forms with many values), or content that benefits from structured extraction (JSON, repeated rows). This keeps tool use for cases where the extra pass is worthwhile.
+**Trigger:** When you need to read or extract page data for temporary storage—especially **before each scroll**: scroll away and the current view is lost, so you must extract and save the current visible content first. After you have read all content via multiple extracts, call **task_done** to summarize the full article or result.
 
-- **extract_data:extract** — Take a screenshot, send it to the vision LLM with your extraction instruction, and return the extracted content. **tool_args**: `instruction` (string, required): what to extract (e.g. "extract all visible links as a list of {text, url}", "return the table as JSON", "list the menu items").
+**Output format:** Markdown. The tool appends each extraction to the task's temp file with a "Target" (your instruction) and "Content" (extracted markdown).
 
-**Visibility and scroll (reliability):** Data from a **single view of the full target** (e.g. full table) is more reliable than splitting into two or more extractions. When possible, **scroll first** so the full target is visible, then extract once. When the full target cannot fit in one view, **scroll in small, continuous steps** so each new visible region overlaps or is adjacent to the previous one—avoid large scrolls that skip a middle portion and cause that content to be never captured.
+**tool_args:**
+- `instruction` (string, required): What to extract from the screen (e.g. "All visible text in the article body", "Table rows as markdown", "List of links").
+- `task_index` (integer, required): Subtask index for file naming. Same index used later in **task_done** to read and summarize this task's extractions.
 
-**Priority**: Use this when the user's goal is to **obtain data** from the screen rather than to perform a click or navigation. For actions (click, type, scroll), use vision_actions index or coordinate tools.
-
-**tool_args**:
-- `instruction` (string, required): Clear description of what to extract and in what form (text, JSON, list, table). Example: "Extract all links on the page as a list with 'text' and 'url'."
+**Rule:** Before each scroll, extract the currently visible content with **extract_data** and save; only then scroll. When you have collected all segments for a subtask, call **task_done** with that subtask's index to produce the final summarized content.
 
 **Example**
 
 ~~~json
 {
-    "thoughts": ["User asked for all links on the page. I'll use extract_data with an instruction to get links as a list."],
+    "thoughts": ["Visible article segment; extracting before scrolling. Task index 2."],
     "tool_name": "extract_data:extract",
-    "tool_args": { "instruction": "Extract all visible links as a list of objects with 'text' and 'url'. Return as JSON array." }
+    "tool_args": {
+        "instruction": "Extract all visible article text as markdown (paragraphs, headings).",
+        "task_index": 2
+    }
 }
 ~~~

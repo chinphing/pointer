@@ -17,6 +17,7 @@ Use these Windows-specific keyboard shortcuts for efficient operation.
 | Focus Address Bar | `ctrl+l` | `press_keys ["ctrl", "l"]` |
 | New Tab | `ctrl+t` | `press_keys ["ctrl", "t"]` |
 | Close Tab | `ctrl+w` | `press_keys ["ctrl", "w"]` |
+| Close Window | `alt+f4` | `press_keys ["alt", "f4"]` |
 | Refresh Page | `ctrl+r` or `f5` | `press_keys ["ctrl", "r"]` |
 | Find | `ctrl+f` | `press_keys ["ctrl", "f"]` |
 

@@ -17,6 +17,7 @@ Use these macOS-specific keyboard shortcuts for efficient operation.
 | Focus Address Bar | `command+l` | `press_keys ["command", "l"]` |
 | New Tab | `command+t` | `press_keys ["command", "t"]` |
 | Close Tab | `command+w` | `press_keys ["command", "w"]` |
+| Close Window | `command+w` | `press_keys ["command", "w"]` |
 | Refresh Page | `command+r` | `press_keys ["command", "r"]` |
 | Find | `command+f` | `press_keys ["command", "f"]` |
 

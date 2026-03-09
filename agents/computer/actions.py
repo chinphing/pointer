@@ -151,35 +151,6 @@ class ActionTools:
         logger.info(result)
         return result
 
-    def _close_popup(self, method: str = "esc", position: Optional[List[int]] = None) -> str:
-        self._check_stop()
-        if method == "esc":
-            if not self.dry_run:
-                pyautogui.press("esc")
-                time.sleep(0.5)
-            self.last_action = {"tool": "close_popup", "tool_input": {"method": method}}
-            result = "Pressed Esc to close popup."
-            logger.info(result)
-            return result
-        if method in ("click_close", "click_cancel", "click_ok"):
-            if not position:
-                return "Error: position is required for click_close/click_cancel/click_ok."
-            logger.debug("close_popup %s at %s", method, position)
-            if not self.dry_run:
-                pyautogui.click(position[0], position[1])
-                time.sleep(0.5)
-            self.last_action = {
-                "tool": "close_popup",
-                "tool_input": {"method": method, "position": position},
-            }
-            button_name = method.replace("click_", "")
-            result = f"Clicked {button_name} button at position [{position[0]}, {position[1]}]."
-            logger.info(result)
-            return result
-        result = "Unknown method; use 'esc', 'click_close', 'click_cancel', or 'click_ok'."
-        logger.info(result)
-        return result
-
     def _done(self) -> str:
         self._check_stop()
         self.last_action = {"tool": "done", "tool_input": {}}
@@ -273,18 +244,6 @@ class ActionTools:
                 raise
 
         @tool
-        def close_popup(method: str = "esc", position: Optional[List[int]] = None) -> str:
-            """Close a popup, dialog, or modal window by key or clicking a button."""
-            logger.info("tool=close_popup input=%s", {"method": method, "position": position})
-            try:
-                result = self._close_popup(method=method, position=position)
-                logger.info("tool=close_popup output=%s", result)
-                return result
-            except Exception as exc:
-                logger.exception("tool=close_popup error=%s", exc)
-                raise
-
-        @tool
         def done() -> str:
             """Signal that the task is complete. Call this when the goal has been achieved."""
             logger.info("tool=done input=%s", {})
@@ -304,6 +263,5 @@ class ActionTools:
             press_keys,
             scroll,
             wait,
-            close_popup,
             done,
         ]

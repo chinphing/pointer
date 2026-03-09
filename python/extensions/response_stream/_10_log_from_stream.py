@@ -64,7 +64,16 @@ class LogFromStream(Extension):
                         kvps["step"] = f"Writing terminal command... {length}"
         kvps.update(parsed)
 
-
+        # Computer profile: when plan is present, add it to conversation history as a visible message
+        if (
+            getattr(self.agent.config, "profile", None) == "computer"
+            and "plan" in parsed
+            and parsed.get("plan") is not None
+        ):
+            plan_items = parsed["plan"]
+            if isinstance(plan_items, list) and len(plan_items) > 0:
+                plan_text = "📋 **Execution Plan**\n\n" + "\n".join([f"- {item}" for item in plan_items])
+                self.agent.hist_add_tool_result("execution_plan", plan_text)
 
         # update the log item
         log_item.update(heading=heading, content=text, kvps=kvps)

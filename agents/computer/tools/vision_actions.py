@@ -88,7 +88,9 @@ class VisionActionsTool(Tool):
             if v is not None:
                 args[k] = v
 
-        actions = ActionTools(dry_run=False)
+        # OS-specific paste key for _type_text (clipboard paste)
+        paste_key = ["command", "v"] if platform.system() == "Darwin" else ["ctrl", "v"]
+        actions = ActionTools(dry_run=False, paste_key=paste_key)
         method = (self.method or "").strip() or self._infer_method(args)
 
         # press_keys and scroll do not require index_map
@@ -132,39 +134,6 @@ class VisionActionsTool(Tool):
                 return Response(message=result, break_loop=False)
             except Exception as e:
                 return Response(message=str(e), break_loop=False)
-        if method == "close_popup":
-            popup_method = args.get("method", "esc")
-            if popup_method == "esc":
-                try:
-                    result = actions._close_popup(method="esc")
-                    return Response(message=result, break_loop=False)
-                except Exception as e:
-                    return Response(message=str(e), break_loop=False)
-            if popup_method in ("click_close", "click_cancel", "click_ok"):
-                index_map_popup = self.agent.get_data("computer_vision_index_map") or {}
-                if not index_map_popup:
-                    return Response(
-                        message="No index_map for close_popup click. Use method=esc or ensure screen inject ran.",
-                        break_loop=False,
-                    )
-                idx_arg = args.get("index")
-                if idx_arg is None:
-                    return Response(
-                        message="Missing 'index' for close_popup click (the button to click).",
-                        break_loop=False,
-                    )
-                try:
-                    idx = int(idx_arg)
-                    pos = self._resolve_index(index_map_popup, idx)
-                    result = actions._close_popup(method=popup_method, position=pos)
-                    return Response(message=result, break_loop=False)
-                except (ValueError, TypeError) as e:
-                    return Response(message=str(e), break_loop=False)
-            return Response(
-                message="close_popup method must be 'esc' or 'click_close'/'click_cancel'/'click_ok'.",
-                break_loop=False,
-            )
-
         # Coordinate-based methods: absolute (x, y) or relative to anchor_index (pixels)
         def _get_pos_for_coord_action():
             anchor = args.get("anchor_index")
@@ -355,6 +324,6 @@ class VisionActionsTool(Tool):
             return Response(message=result, break_loop=False)
 
         return Response(
-            message=f"Unknown method: {method}. Use index-based (click_index, double_click_index, type_text_at_index, right_click_index, hover_index, drag_index_to_index, scroll_at_index), coordinate-based (click_at, double_click_at, right_click_at, hover_at, type_text_at with x,y,text), type_text_focused (when field already focused), press_keys, wait, or close_popup.",
+            message=f"Unknown method: {method}. Use index-based (click_index, double_click_index, type_text_at_index, right_click_index, hover_index, drag_index_to_index, scroll_at_index), coordinate-based (click_at, double_click_at, right_click_at, hover_at, type_text_at with x,y,text), type_text_focused (when field already focused), press_keys, or wait.",
             break_loop=False,
         )

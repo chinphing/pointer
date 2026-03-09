@@ -25,6 +25,13 @@
             <span x-text="$store.chatInput.paused ? 'Resume Agent' : 'Pause Agent'"></span>
         </button>
 
+        <button class="text-button" x-show="$store.chats.selectedContext?.running" @click="$store.chatInput.stopAgent()" title="Stop run and keep history; you can send a new message to continue">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="14" height="14">
+                <path d="M6 6h12v12H6z"/>
+            </svg>
+            <span>Stop</span>
+        </button>
+
         <button class="text-button" @click="$confirmClick($event, () => $store.chats.resetChat())" :disabled="!$store.chats.selected">
             <span class="material-symbols-outlined">delete_sweep</span>
             <p>Clear Chat</p>

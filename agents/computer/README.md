@@ -24,7 +24,7 @@
 2. **截图**：使用本目录下 `screen.py` 的 `screenshot_current_monitor()` 获取当前光标所在显示器的截图及 bbox。
 3. **标注与序号**：使用 `som_util.py` 的 `BoxAnnotator` 做元素检测，`sort_boxes_lrtb` 按从左到右、从上到下排序后标注序号；序号标签优先在 bbox 正上方居中，空间不足时在正下方居中。
 4. **可选象限放大**：将标注图按 2×2 分为左上、右上、右下、左下四块；若用户或上一轮回复中出现方位词（如「左上」「top_left」等），则把对应象限裁剪并 2 倍放大后一并作为输入。
-5. **工具**：`tools/vision_actions.py` 中的 `VisionActionsTool` 提供基于序号的 `vision_actions:click_index`、`vision_actions:double_click_index`、`vision_actions:type_text_at_index` 等，以及基于坐标的 `vision_actions:click_at`、`vision_actions:type_text_at`（x, y, text）等。优先用序号；若目标元素无序号，则用坐标（模型输出归一化坐标，由 `coord_convert.py` 按配置的坐标系还原为屏幕像素）。**数据提取**：`tools/extract_data.py` 中的 `ExtractDataTool` 提供 `extract_data:extract`，对当前屏幕截图并调用视觉大模型按指令提取结构化数据（如链接列表、表格 JSON）。
+5. **工具**：`tools/vision_actions.py` 中的 `VisionActionsTool` 提供基于序号的 `vision_actions:click_index`、`vision_actions:double_click_index`、`vision_actions:type_text_at_index` 等，以及基于坐标的 `vision_actions:click_at`、`vision_actions:type_text_at`（x, y, text）等。优先用序号；若目标元素无序号，则用坐标（模型输出归一化坐标，由 `coord_convert.py` 按配置的坐标系还原为屏幕像素）。**阅读与数据**：在每次滚动前用 **extract_data:extract**（instruction + task_index）将当前可见内容追加到任务临时文件；当某子任务的全部片段提取完毕，调用 **task_done:done**（task_index）由 LLM 汇总并保存为正式文件。
 
 ## 架构与数据流
 
@@ -49,12 +49,10 @@
 | `prompts/agent.system.main.role.md` | 角色与操作规范（基于截图与序号行动）。 |
 | `prompts/agent.system.main.communication.md` | 沟通格式：JSON（thoughts / tool_name / tool_args）、vision_actions 工具说明。 |
 | `prompts/agent.system.tool.vision_actions.md` | 工具说明：所有 vision_actions（click、type、scroll 等）的用法、参数、**操作后校验方法**与示例。 |
-| `prompts/agent.system.tool.extract_data.md` | 工具说明：extract_data:extract 的用法与示例（按 instruction 从屏幕提取数据）。 |
 | `prompts/agent.system.os.macos.md` | **macOS 专用**：快捷键参考（Command 修饰键、地址栏/标签/刷新等快捷键）。 |
 | `prompts/agent.system.os.windows.md` | **Windows 专用**：快捷键参考（Ctrl 修饰键、地址栏/标签/刷新等快捷键）。 |
 | `prompts/agent.system.os.linux.md` | **Linux 专用**：快捷键参考（Ctrl 修饰键、地址栏/标签/刷新等快捷键）。 |
 | `os_prompts.py` | OS 提示词加载器：根据当前操作系统动态加载对应的快捷键参考文件。 |
-| `tools/extract_data.py` | `ExtractDataTool`：截屏后调用视觉模型按 instruction 提取数据并返回。 |
 | `screen.py` | 截图：`screenshot_current_monitor()` 返回 (PIL Image, (left, top, width, height))；`encode_image` 等。 |
 | `som_util.py` | `sort_boxes_lrtb(boxes, height)` 按左→右、上→下排序；`BoxAnnotator` 预测并标注，标签位置上/下居中。 |
 | `actions.py` | `ActionTools`：`_click`、`_double_click`、`_type_text` 等底层操作（pyautogui / pyperclip）。 |

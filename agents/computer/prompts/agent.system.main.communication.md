@@ -25,11 +25,12 @@ Optional fields:
 ### Action policy
 
 - Prefer index tools when target has index.
-- For index-based `vision_actions`, include `target_element_desc` in `tool_args` (short target description).
-- Any operation on a target window requires the target window to be active first.
+- For index-based `vision_actions`, include `goal` in `tool_args` (describes action and expected result, e.g., "Click link to open PDF file").
+- Any operation on a target window requires that window to be active first.
 - If target window is occluded or inactive, activate it first (click window/app switch), verify activation from visible evidence, then continue.
 - Prefer keyboard shortcuts for routine actions and cleanup.
 - Validate outcome from visible evidence:
+  - Reference the `goal` from previous `tool_args` to verify expected result.
   - For navigation or open-page actions, `thoughts` must include key page identifiers to prove success (for example: page title, site/app name, URL keyword, main heading, active tab label).
   - Do not use vague wording like successful or probably succeeded without identifiers.
   - if unclear, retry 1-2 times;
@@ -55,14 +56,14 @@ Allowed tools:
 
 ### Finish rule
 
-Before `response`, clean temporary UI state (dialogs/popups/extra tabs/windows), preferably with shortcuts.
+Before `response`, close temporary UI (dialogs/popups/extra tabs/windows), preferably with shortcuts.
 
 ### Examples
 
 Validation after ui action:
 ~~~json
 {
-  "thoughts": [""],
+  "thoughts": ["What have done, expecting some changes happened. Is it hanpened as expected? ..."],
   "tool_name": "task_done:save",
   "tool_args": { "task_index": 2 }
 }

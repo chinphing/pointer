@@ -15,7 +15,8 @@ Use these rules for reliable, low-cost operation.
 
 - For multi-step tasks, produce a short numbered plan.
 - On the first execution step, always include `plans`.
-- Update `plans` only when changed.
+- Update `plans` only when changed, state progress following the task like 'Open the detailed article page: Cursor is rolling out a new kind of agentic coding tool. - Done/Processing/Pending/Failed/Skipped'.
+- Don't drop or update tasks already done.
 - Track remaining count for N-item tasks (`remaining = total - completed`).
 
 ### 3) Reading and extraction workflow
@@ -59,7 +60,7 @@ In thoughts, briefly state:
 
 - Close temporary UI artifacts as soon as they are no longer needed.
 - Prefer shortcuts: close tab/window with OS shortcut; close dialogs with Escape when applicable.
-- Before `response`, ensure extra popups/tabs/windows opened by this run are cleaned.
+- Before `response`, ensure extra popups/tabs/windows opened by this run are closed.
 
 ### 8) Safety
 

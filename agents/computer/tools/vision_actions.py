@@ -29,24 +29,13 @@ LAST_VISION_ACTION_KEY = "computer_last_vision_action"
 class VisionActionsTool(Tool):
     """Execute vision_actions by index (click_index, double_click_index, type_text_at_index)."""
 
-    @staticmethod
-    def _sanitize_action_args_for_history(raw_args: Dict[str, Any]) -> Dict[str, Any]:
-        """Remove unstable index-like fields before sending history back to model."""
-        sanitized: Dict[str, Any] = {}
-        for k, v in (raw_args or {}).items():
-            key = str(k)
-            if "index" in key.lower():
-                continue
-            sanitized[key] = v
-        return sanitized
-
     async def after_execution(self, response: Response, **kwargs: Any) -> None:
         self.agent.set_data(
             LAST_VISION_ACTION_KEY,
             {
                 "tool": self.name,
                 "method": self.method or "",
-                "args": self._sanitize_action_args_for_history(dict(self.args or {})),
+                "args": self.args,
                 "result": (response.message or "").strip(),
             },
         )
@@ -98,6 +87,14 @@ class VisionActionsTool(Tool):
         for k, v in kwargs.items():
             if v is not None:
                 args[k] = v
+
+        # Validate goal parameter for all methods
+        goal = str(args.get("goal", "")).strip()
+        if not goal:
+            return Response(
+                message="Missing required 'goal' in tool_args. Please describe the action and expected result.",
+                break_loop=False,
+            )
 
         # OS-specific paste key for _type_text (clipboard paste)
         paste_key = ["command", "v"] if platform.system() == "Darwin" else ["ctrl", "v"]
@@ -260,13 +257,6 @@ class VisionActionsTool(Tool):
             pos = self._resolve_index(index_map, index)
         except ValueError as e:
             return Response(message=str(e), break_loop=False)
-
-        target_desc = str(args.get("target_element_desc", "")).strip()
-        if not target_desc:
-            return Response(
-                message="Missing 'target_element_desc' in tool_args for index-based methods.",
-                break_loop=False,
-            )
 
         if method == "click_index":
             result = actions._click(pos)

@@ -482,6 +482,11 @@ class Agent:
                                 warning_msg
                             )
                             self.context.log.log(type="warning", content=warning_msg)
+                            
+                            # Track repeated action for computer agent
+                            if getattr(self.config, "profile", "") == "computer":
+                                failure_count = self.data.get("computer_action_failure_count") or 0
+                                self.data["computer_action_failure_count"] = failure_count + 1
 
                         else:  # otherwise proceed with tool
                             # Append the assistant's response to the history

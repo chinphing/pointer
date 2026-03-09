@@ -319,23 +319,48 @@ class ComputerScreenInject(Extension):
         )
 
         prev_action_block: Optional[str] = None
-        last_action = self.agent.get_data("computer_last_vision_action")
+        last_action = self.agent.data.get("computer_last_vision_action")
+        last_goal = self.agent.data.get("computer_last_goal") or ""
+        
+        # Track consecutive failures - increment if same goal repeated
+        failure_count = self.agent.data.get("computer_action_failure_count") or 0
+        
         if last_action:
-            safe_args = dict(last_action.get("args", {}) or {})
-            safe_args = {
-                k: v for k, v in safe_args.items()
-                if "index" not in str(k).lower()
-            }
-            action_desc = (
-                f"Tool: {last_action.get('tool', '')}:{last_action.get('method', '')}, "
-                f"args: {safe_args}, result: {last_action.get('result', '')}"
-            )
+            goal = last_action.get("args", {}).get("goal", "")
+            result = last_action.get("result", "")
+            
+            # If same goal was repeated, increment failure count
+            if goal == last_goal and goal:
+                failure_count = failure_count + 1
+            else:
+                failure_count = 1
+            
+            # Store current goal for next turn comparison
+            self.agent.set_data("computer_last_goal", goal)
+            
+            # Build failure warning if too many consecutive failures
+            failure_warning = ""
+            if failure_count >= 3:
+                failure_warning = (
+                    f"⚠️ WARNING: {failure_count} consecutive attempts with same goal '{goal}' failed. "
+                    "This approach is not working. Consider: (1) the target element may not exist or be accessible, "
+                    "(2) the UI may have changed, (3) you need a completely different approach. "
+                    "If stuck, use 'response' tool to inform user and ask for guidance instead of repeating failed actions. "
+                )
+            
             prev_action_block = (
-                f"Previous action: {action_desc}. "
-                "Strict validation: only treat as success if the expected change is clearly visible on screen; no 'maybe' or 'probably'. "
+                f"Previous action goal: {goal}. "
+                f"Action state: {result}. "
+                "Validate: Did the previous action achieve the goal? Check screenshot for expected changes. "
+                "Only treat as success if the expected change is clearly visible. "
                 "If unverified or failed: (1) retry the same action first (1–2 times), (2) then try a different method, (3) only after several attempts still fail may you conclude the goal was not achieved. "
                 "Then output your next tool call (retry, alternative, or continue if verified)."
             )
+            if failure_warning:
+                prev_action_block = failure_warning + " " + prev_action_block
+            
+            # Update failure count
+            self.agent.set_data("computer_action_failure_count", failure_count)
             self.agent.set_data("computer_last_vision_action", None)
 
         annotation_help = (

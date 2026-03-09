@@ -45,5 +45,6 @@ agent_history.gif
 # ComputerUse debug snapshots (per-run screenshots)
 agents/computer/snapshots/
 # ComputerUse partially-done files (per-session staged progress)
-agents/computer/partially_done/
+agents/computer/extract_data/
+agents/computer/task_done/
 data/**

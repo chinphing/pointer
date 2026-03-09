@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from PIL import Image
 
 from python.helpers.extension import Extension
-from python.helpers import history, files
+from python.helpers import history, files, runtime
 
 # Load computer agent modules by path (agents/computer is not a package)
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -236,22 +236,32 @@ def _save_snapshots(
     raw_img: Image.Image,
     annotated_img: Image.Image,
     zoomed_imgs: Optional[List[Tuple[str, Image.Image]]] = None,
-) -> None:
-    """Save debug images under agents/computer/snapshots/<context_id>/<timestamp>_*.png."""
+) -> Dict[str, str]:
+    """Save debug images under agents/computer/snapshots/<context_id>/<timestamp>_*.png.
+    Returns dict of saved paths: {'raw': path, 'annotated': path, 'zoom_<key>': path, ...}
+    """
+    result: Dict[str, str] = {}
     try:
         snapshots_base = files.get_abs_path("agents", "computer", "snapshots")
         run_dir = os.path.join(snapshots_base, context_id or "default")
         os.makedirs(run_dir, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         prefix = os.path.join(run_dir, ts)
-        raw_img.save(f"{prefix}_raw.png")
-        annotated_img.save(f"{prefix}_annotated.png")
+        raw_path = f"{prefix}_raw.png"
+        annotated_path = f"{prefix}_annotated.png"
+        raw_img.save(raw_path)
+        annotated_img.save(annotated_path)
+        result["raw"] = raw_path
+        result["annotated"] = annotated_path
         if zoomed_imgs:
             for key, img in zoomed_imgs:
                 safe_key = key.replace("/", "_").replace("\\", "_")
-                img.save(f"{prefix}_zoom_{safe_key}.png")
+                zoom_path = f"{prefix}_zoom_{safe_key}.png"
+                img.save(zoom_path)
+                result[f"zoom_{safe_key}"] = zoom_path
     except Exception:
         pass
+    return result
 
 
 class ComputerScreenInject(Extension):
@@ -311,9 +321,14 @@ class ComputerScreenInject(Extension):
         prev_action_block: Optional[str] = None
         last_action = self.agent.get_data("computer_last_vision_action")
         if last_action:
+            safe_args = dict(last_action.get("args", {}) or {})
+            safe_args = {
+                k: v for k, v in safe_args.items()
+                if "index" not in str(k).lower()
+            }
             action_desc = (
                 f"Tool: {last_action.get('tool', '')}:{last_action.get('method', '')}, "
-                f"args: {last_action.get('args', {})}, result: {last_action.get('result', '')}"
+                f"args: {safe_args}, result: {last_action.get('result', '')}"
             )
             prev_action_block = (
                 f"Previous action: {action_desc}. "
@@ -347,7 +362,11 @@ class ComputerScreenInject(Extension):
         content.append({
             "type": "text",
             "text": (
-                "Current screen: (1) raw, (2) annotated with indices; then zoomed regions. "
+                "Input types for this turn: "
+                "(1) raw screenshot; "
+                "(2) annotated screenshot with indices; "
+                "(3) top-area 2x zoom from the annotated screenshot for index confirmation; "
+                "(4) optional extra local 2x zooms for other regions when needed. "
                 + annotation_help
                 + image_size_instruction
                 + " Prefer index-based tools when the target has a number; if the target has no number, use coordinate-based tools (click_at, etc.) with x, y in pixels."
@@ -438,7 +457,20 @@ class ComputerScreenInject(Extension):
                 extra_img = _crop_quadrant_2x(annotated_img, z_key)
                 if extra_img is not None:
                     zoomed_imgs_to_save.append((z_key, extra_img))
-        _save_snapshots(context_id, img, annotated_img, zoomed_imgs_to_save)
+        saved_paths = _save_snapshots(context_id, img, annotated_img, zoomed_imgs_to_save)
+
+        # In development mode, attach snapshot link to the last GEN log item
+        if runtime.is_development() and saved_paths.get("annotated"):
+            # Find the last agent log item and add snapshot link
+            logs = self.agent.context.log.logs
+            for log_item in reversed(logs):
+                if hasattr(log_item, 'type') and log_item.type == "agent":
+                    # Get existing kvps or create new
+                    existing_kvps = dict(log_item.kvps) if log_item.kvps else {}
+                    existing_kvps["snapshot"] = saved_paths["annotated"]
+                    # Use update method to trigger state change notification
+                    log_item.update(kvps=existing_kvps)
+                    break
 
         # Inject as separate messages so history can selectively keep/discard
         # All contents are now properly formatted as lists for LangChain compatibility

@@ -414,16 +414,15 @@ function drawProcessStep({
 
   // update content
   let stepDetailContent;
-  if(content){
+  if(content && content.trim()){
   stepDetailContent = ensureChild(
     stepDetailScroll,
     ".process-step-detail-content",
-    "p",
+    "div",
     "process-step-detail-content",
     ...(contentClasses || []),
   );
-  const adjustedContent = adjustStepContent(content)
-  stepDetailContent.innerHTML = adjustedContent;
+  stepDetailContent.innerHTML = adjustStepContent(content);
   }
 
   // reapply scroll position (autoscroll if bottom) - only when expanded already and not mass rendering
@@ -438,6 +437,15 @@ function drawProcessStep({
     "step-action-buttons",
   );
   stepActionBtns.textContent = "";
+  
+  // Add snapshot link if present in kvps (dev mode only)
+  if (kvps?.snapshot && typeof kvps.snapshot === "string") {
+    const snapshotBtn = createActionButton("photo_camera", "Snapshot", () => {
+      imageViewerStore.open(`/image_get?path=${encodeURIComponent(kvps.snapshot)}`, { name: "Snapshot" });
+    });
+    stepActionBtns.appendChild(snapshotBtn);
+  }
+  
   (actionButtons || [])
     .filter(Boolean)
     .forEach((button) => stepActionBtns.appendChild(button));
@@ -741,9 +749,6 @@ export function drawMessageAgent({
   ...additional
 }) {
   const title = cleanStepTitle(heading);
-  let displayKvps = {};
-  if (kvps?.thoughts) displayKvps["icon://lightbulb[Thoughts]"] = kvps.thoughts;
-  if (kvps?.step) displayKvps["icon://step[Step]"] = kvps.step;
   const thoughtsText = String(kvps?.thoughts ?? "");
   const headerLabels = [
     kvps?.tool_name && { label: kvps.tool_name, class: "tool-name-badge" },
@@ -765,12 +770,18 @@ export function drawMessageAgent({
     );
   }
 
+  // kvps should just include thoughts, plans, snapshot
+  const displayKvps = {
+    thoughts: kvps.thoughts,
+    plans: kvps.plans,
+    snapshot: kvps.snapshot,
+  };
   return drawProcessStep({
     id,
     title,
     code: "GEN",
     classes: null,
-    kvps: displayKvps,
+    kvps: displayKvps,  // Pass original kvps to include thoughts, plans, snapshot
     actionButtons,
     log: arguments[0],
   });
@@ -1478,6 +1489,13 @@ export function drawMessageError({
 function drawKvpsIncremental(container, kvps, latex) {
   // existing KVPS table
   let table = container.querySelector(".msg-kvps");
+  
+  // Extract snapshot path for special handling
+  let snapshotPath = null;
+  if (kvps && kvps.snapshot) {
+    snapshotPath = kvps.snapshot;
+  }
+  
   if (kvps) {
     // create table if not found
     if (!table) {
@@ -1488,13 +1506,14 @@ function drawKvpsIncremental(container, kvps, latex) {
 
     // Get all current rows for comparison
     let existingRows = table.querySelectorAll(".kvps-row");
-    // Filter out reasoning
+    // Filter  reasoning and snapshot (snapshot is handled separately, plans is handled with markdown)
     const kvpEntries = Object.entries(kvps).filter(
-      ([key]) => key !== "reasoning",
+      ([key]) => key !== "reasoning" && key !== "snapshot",
     );
 
     // Update or create rows as needed
     kvpEntries.forEach(([key, value], index) => {
+      
       let row = existingRows[index];
 
       if (!row) {
@@ -1533,12 +1552,21 @@ function drawKvpsIncremental(container, kvps, latex) {
       // Clear and rebuild content (for now - could be optimized further)
       td.innerHTML = "";
 
-      if (Array.isArray(value)) {
+      // Check if this is a Plans field - use markdown rendering
+      const isPlansField = key.includes("Plans") || key.includes("plans");
+      
+      // For plans field (array), convert to markdown list format
+      let renderValue = value;
+      if (isPlansField && Array.isArray(value)) {
+        renderValue = value.map((item, idx) => `${item}`).join('\n');
+      }
+      
+      if (Array.isArray(value) && !isPlansField) {
         for (const item of value) {
-          addValue(item, td);
+          addValue(item, td, isPlansField);
         }
       } else {
-        addValue(value, td);
+        addValue(renderValue, td, isPlansField);
       }
 
       // reapply scroll position or autoscroll
@@ -1552,7 +1580,7 @@ function drawKvpsIncremental(container, kvps, latex) {
       existingRows = table.querySelectorAll(".kvps-row");
     }
 
-    function addValue(value, tdiv) {
+    function addValue(value, tdiv, useMarkdown = false) {
       if (typeof value === "object") value = JSON.stringify(value, null, 2);
 
       if (typeof value === "string" && value.startsWith("img://")) {
@@ -1567,6 +1595,12 @@ function drawKvpsIncremental(container, kvps, latex) {
         imgElement.addEventListener("click", () => {
           imageViewerStore.open(imgElement.src, { refreshInterval: 1000 });
         });
+      } else if (useMarkdown && typeof value === "string") {
+        // Render as markdown for Plans field
+        const div = document.createElement("div");
+        div.classList.add("kvps-markdown");
+        div.innerHTML = marked.parse(value, { breaks: true });
+        tdiv.appendChild(div);
       } else {
         const span = document.createElement("p");
         span.innerHTML = convertHTML(value);

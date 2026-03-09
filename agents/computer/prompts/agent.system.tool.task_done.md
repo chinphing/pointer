@@ -1,23 +1,22 @@
 ### task_done
 
-Task done tool has two methods: **save** (complete a subtask) and **read** (load all results for further usage).
+Task done has two methods: **save** and **read**.
 
 ---
 
 #### task_done:save
 
-Call **task_done:save** when a **subtask is complete**: the tool reads that subtask's **extract_data** temp file, merges the segments via LLM into one coherent document, and saves as a formal file.
-
-**When to call:** After you have finished all **extract_data** calls for a given subtask (e.g. full article extracted for task index 2). Call with **task_index** so segments are merged and saved.
+Use when one subtask is complete.
+It merges all extracts for the `task_index` and saves formal output.
 
 **tool_args:**
-- `task_index` (integer, required): The subtask index whose extractions to merge.
+- `task_index` (required)
 
-**Example — saving a completed subtask:**
+Example:
 
 ~~~json
 {
-    "thoughts": ["Finished extracting full article for subtask 2. Calling task_done:save to merge segments."],
+    "thoughts": ["Subtask 2 extraction complete, saving merged result"],
     "tool_name": "task_done:save",
     "tool_args": { "task_index": 2 }
 }
@@ -27,31 +26,21 @@ Call **task_done:save** when a **subtask is complete**: the tool reads that subt
 
 #### task_done:read
 
-Call **task_done:read** when you need to **use the saved subtask results** for subsequent work — whether for providing the final response, performing analysis, summarization, comparison, or any follow-up processing that requires the previously extracted data.
+Use when subsequent work needs saved data (response, analysis, comparison, synthesis).
+It loads all saved task outputs and cleans task storage.
 
-**What it does:**
-1. Reads all saved task files from `task_done/<context_id>/`
-2. Returns all content aggregated in the response
-3. **Cleans up** the directory (removes all task_done and extract_data files)
+**tool_args:** none
 
-**When to call:** Whenever subsequent tasks need the previously extracted data — whether that's for final response, cross-article comparison, data synthesis, or any processing that requires the saved results.
-
-**tool_args:** None required.
-
-**Example — loading all results for final response:**
+Example:
 
 ~~~json
 {
-    "thoughts": ["All 3 articles have been extracted and saved. Now loading all results to provide the final summary to the user."],
+    "thoughts": ["Need saved task data for next step, loading all results"],
     "tool_name": "task_done:read",
     "tool_args": {}
 }
 ~~~
 
-Then use the loaded data in your final **response**.
-
----
-
 **Workflow summary:**
 1. For each subtask: `extract_data:extract` (multiple times) → `task_done:save` (once per subtask)
-2. When you need the data for subsequent work: `task_done:read` → use loaded data → continue with response, analysis, comparison, or other tasks
+2. When later work needs data: `task_done:read` → continue with response or processing

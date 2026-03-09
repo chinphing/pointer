@@ -29,13 +29,24 @@ LAST_VISION_ACTION_KEY = "computer_last_vision_action"
 class VisionActionsTool(Tool):
     """Execute vision_actions by index (click_index, double_click_index, type_text_at_index)."""
 
+    @staticmethod
+    def _sanitize_action_args_for_history(raw_args: Dict[str, Any]) -> Dict[str, Any]:
+        """Remove unstable index-like fields before sending history back to model."""
+        sanitized: Dict[str, Any] = {}
+        for k, v in (raw_args or {}).items():
+            key = str(k)
+            if "index" in key.lower():
+                continue
+            sanitized[key] = v
+        return sanitized
+
     async def after_execution(self, response: Response, **kwargs: Any) -> None:
         self.agent.set_data(
             LAST_VISION_ACTION_KEY,
             {
                 "tool": self.name,
                 "method": self.method or "",
-                "args": dict(self.args or {}),
+                "args": self._sanitize_action_args_for_history(dict(self.args or {})),
                 "result": (response.message or "").strip(),
             },
         )
@@ -250,6 +261,13 @@ class VisionActionsTool(Tool):
         except ValueError as e:
             return Response(message=str(e), break_loop=False)
 
+        target_desc = str(args.get("target_element_desc", "")).strip()
+        if not target_desc:
+            return Response(
+                message="Missing 'target_element_desc' in tool_args for index-based methods.",
+                break_loop=False,
+            )
+
         if method == "click_index":
             result = actions._click(pos)
             return Response(message=result, break_loop=False)
@@ -314,12 +332,9 @@ class VisionActionsTool(Tool):
                     message=f"Invalid 'amount' value: {amount_arg}.",
                     break_loop=False,
                 )
-            # Convert pixel-like amount to actual scroll count: amount/30, at least 1 step when non-zero
-            scroll_count = round(amount / 30)
-            if amount > 0 and scroll_count < 1:
-                scroll_count = 1
-            elif amount < 0 and scroll_count > -1:
-                scroll_count = -1
+            if amount == 0:
+                return Response(message="Amount cannot be 0.", break_loop=False)
+            scroll_count = amount
             result = actions._scroll_at(pos, scroll_count)
             return Response(message=result, break_loop=False)
 

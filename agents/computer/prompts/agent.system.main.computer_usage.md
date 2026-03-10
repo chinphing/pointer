@@ -25,7 +25,7 @@ For reading/data extraction tasks only:
 1. **Extract current visible content** → `extract_data:extract`
 2. **Scroll to next section** → `scroll_at_index`
 3. **Repeat steps 1-3 until reading complete**
-4. When subtask complete: call `task_done:save`
+4. When subtask complete: call `task_done:merge`
 5. When later work needs saved results: call `task_done:read`
 
 ### 4) End-of-content judgment

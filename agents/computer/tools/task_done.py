@@ -1,6 +1,6 @@
 """
 Task-done tool for Computer Agent:
-- save: when a subtask is complete, read its extract_data temp file, merge via LLM, save as formal file
+- merge: when a subtask is complete, read its extract_data temp file, merge via LLM, save as formal file
 - read: read all saved task_done files, return to model, and clean up the directory
 """
 from __future__ import annotations
@@ -53,22 +53,22 @@ class TaskDoneTool(Tool):
 
         method = getattr(self, "method", None)
 
-        if method == "save":
-            return await self._execute_save(args)
+        if method == "merge":
+            return await self._execute_merge(args)
         elif method == "read":
             return await self._execute_read(args)
         else:
             return Response(
-                message=f"task_done supports methods 'save' (for completing a subtask) or 'read' (for loading all results), got '{method}'.",
+                message=f"task_done supports methods 'merge' (for completing a subtask) or 'read' (for loading all results), got '{method}'.",
                 break_loop=False,
             )
 
-    async def _execute_save(self, args: dict) -> Response:
-        """Save: merge extracts for a single task and save to file."""
+    async def _execute_merge(self, args: dict) -> Response:
+        """Merge: merge extracts for a single task and save to file."""
         task_index_arg = args.get("task_index")
         if task_index_arg is None:
             return Response(
-                message="task_done:save requires 'task_index' (the subtask index whose extractions to merge).",
+                message="task_done:merge requires 'task_index' (the subtask index whose extractions to merge).",
                 break_loop=False,
             )
         try:
@@ -131,7 +131,7 @@ class TaskDoneTool(Tool):
             f.write(merged)
 
         return Response(
-            message=f"Task {task_index} completed and saved. Continue with next subtask or call task_done:read to load all results for further usage.",
+            message=f"Task {task_index} completed and merged. Continue with next subtask or call task_done:read to load all results for further usage.",
             break_loop=False,
         )
 

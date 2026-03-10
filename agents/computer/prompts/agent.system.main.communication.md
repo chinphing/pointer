@@ -41,7 +41,7 @@ Optional fields:
 ### Reading/data policy
 
 - Before each scroll: `extract_data:extract` with `task_index`.
-- Subtask complete: `task_done:save`.
+- Subtask complete: `task_done:merge`.
 - When subsequent work needs saved data: `task_done:read`.
 - If previous action was scroll, do overlap validation and adjust next scroll.
 
@@ -50,7 +50,7 @@ Optional fields:
 Allowed tools:
 - `vision_actions:*` (click/type/scroll/keys/wait and coordinate variants)
 - `extract_data:extract`
-- `task_done:save`
+- `task_done:merge`
 - `task_done:read`
 - `response`
 
@@ -64,16 +64,16 @@ Validation after ui action:
 ~~~json
 {
   "thoughts": ["What have done, expecting some changes happened. Is it hanpened as expected? ..."],
-  "tool_name": "task_done:save",
+  "tool_name": "task_done:merge",
   "tool_args": { "task_index": 2 }
 }
 ~~~
 
-Subtask save:
+Subtask merge:
 ~~~json
 {
-  "thoughts": ["Subtask 2 extraction complete, now saving merged result"],
-  "tool_name": "task_done:save",
+  "thoughts": ["Subtask 2 extraction complete, now merging and saving result"],
+  "tool_name": "task_done:merge",
   "tool_args": { "task_index": 2 }
 }
 ~~~
@@ -81,7 +81,7 @@ Subtask save:
 Load saved data for subsequent work:
 ~~~json
 {
-  "thoughts": ["Need prior saved data for analysis, loading all task outputs"],
+  "thoughts": ["All subtasks complete, loading saved results for final response"],
   "tool_name": "task_done:read",
   "tool_args": {}
 }

@@ -29,7 +29,7 @@ Parameter constraints:
 1. First, extract current visible content → `extract_data:extract`
 2. Then scroll to next section
 3. Repeat: extract → scroll → extract → scroll until reading complete
-4. When subtask complete: call `task_done:save`
+4. When subtask complete: call `task_done:merge`
 5. When later work needs saved data: call `task_done:read`
 
 Example:

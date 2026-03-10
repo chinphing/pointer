@@ -19,7 +19,7 @@ For reading/data extraction tasks:
 1. **Step 1**: Extract current visible content → `extract_data:extract`
 2. **Step 2**: Scroll to next section → `scroll_at_index`
 3. **Step 3**: Repeat steps 1-3 until reading complete
-4. **Step 4**: When subtask complete: call `task_done:save`
+4. **Step 4**: When subtask complete: call `task_done:merge`
 5. **Step 5**: When later work needs saved data: call `task_done:read`
 
 ### Finish Criteria

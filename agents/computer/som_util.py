@@ -376,12 +376,19 @@ class BoxAnnotator:
                 )
                 dir_stats_all.append((dir_id, total_overlap, max_single, area, bg_x1, bg_y1, bg_x2, bg_y2, tx, ty))
 
-            # 特殊情况：四个方向各自对某其它元素的最大覆盖比例均 > 50%（分母为其它元素面积）-> 用框内左上角
+            # 特殊情况1：四个方向各自对某其它元素的最大覆盖比例均 > 阈值 -> 用框内左上角
             use_inside = False
             if len(dir_stats_all) == 4 and all(
                 max_single > OVERLAP_AREA_RATIO_THRESHOLD for (_, _, max_single, *_) in dir_stats_all
             ):
                 use_inside = True
+            
+            # 特殊情况2：元素面积是标注框面积的5倍以上 -> 直接用框内左上角
+            if not use_inside and len(raw_candidates) > 4:
+                box_area = (x2 - x1) * (y2 - y1)
+                label_area = tw * th
+                if label_area > 0 and box_area >= label_area * 10:
+                    use_inside = True
 
             # 仅考虑在边界内的候选，按 total_overlap 最小选取
             dir_stats = [s for s in dir_stats_all if _in_bounds(s[4], s[5], s[6], s[7])]
@@ -444,7 +451,7 @@ class BoxAnnotator:
 
 if __name__ == "__main__":
     base_dir = "/Users/yunyun/Desktop/agent-zero"
-    image = Image.open(base_dir + "/微信截图3.png")
+    image = Image.open(base_dir + "/yindeng1.png")
     box_annotator = BoxAnnotator()
     annotated_img, boxes = box_annotator.predict_and_annotate_all(image)
     annotated_img.save(base_dir + "/test_annotated.png")

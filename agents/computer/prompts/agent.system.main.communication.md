@@ -2,21 +2,21 @@
 
 ### Core output contract
 
-Respond with exactly one JSON object and no extra text.
+Respond with exactly one XML object and no extra text.
 
 Required fields:
-- `thoughts`: validatioin summary, then short reasoning steps
+- `thoughts`: validation summary, then short reasoning steps
 - `headline`: short step title for UI
 - `tool_name`
 - `tool_args`
 
 Optional fields:
-- `plans`: Array of steps with progress
+- `plans`: Use markdown list format (each item on a new line starting with "- ")
 
 ### Hard constraints
 
 - Language of all output: same as user message.
-- No double quote character in string values of `thoughts`, `headline`, or `tool_args`.
+- No XML special characters (< > &) in string values of `thoughts`, `headline`, or `tool_args` - escape them or use alternative wording.
 - Indices are unstable across turns. Never reuse previous-turn indices directly.
 - Put indices only in `tool_args`, never in `thoughts`.
 - One tool call per turn.
@@ -61,39 +61,70 @@ Before `response`, close temporary UI (dialogs/popups/extra tabs/windows), prefe
 ### Examples
 
 Validation after ui action:
-~~~json
-{
-  "thoughts": ["What have done, expecting some changes happened. Is it hanpened as expected? ..."],
-  "tool_name": "task_done:merge",
-  "tool_args": { "task_index": 2 }
-}
+~~~xml
+<response>
+  <thoughts>What have done, expecting some changes happened. Is it happened as expected? ...</thoughts>
+  <headline>Click submit button</headline>
+  <tool_name>vision_actions:click_index</tool_name>
+  <tool_args>
+    <index>4</index>
+    <goal>Click submit button to submit form</goal>
+  </tool_args>
+</response>
 ~~~
 
 Subtask merge:
-~~~json
-{
-  "thoughts": ["Subtask 2 extraction complete, now merging and saving result"],
-  "tool_name": "task_done:merge",
-  "tool_args": { "task_index": 2 }
-}
+~~~xml
+<response>
+  <thoughts>Subtask 2 extraction complete, now merging and saving result</thoughts>
+  <headline>Merge task results</headline>
+  <tool_name>task_done:merge</tool_name>
+  <tool_args>
+    <task_index>2</task_index>
+  </tool_args>
+</response>
 ~~~
 
 Load saved data for subsequent work:
-~~~json
-{
-  "thoughts": ["All subtasks complete, loading saved results for final response"],
-  "tool_name": "task_done:read",
-  "tool_args": {}
-}
+~~~xml
+<response>
+  <thoughts>All subtasks complete, loading saved results for final response</thoughts>
+  <headline>Load saved data</headline>
+  <tool_name>task_done:read</tool_name>
+  <tool_args>
+  </tool_args>
+</response>
+~~~
+
+With plans:
+~~~xml
+<response>
+  <thoughts>Analyzing the task requirements and planning execution steps</thoughts>
+  <headline>Plan extraction steps</headline>
+  <tool_name>vision_actions:click_index</tool_name>
+  <tool_args>
+    <index>1</index>
+    <goal>Navigate to公众号 section</goal>
+  </tool_args>
+  <plans>
+- 1. Click on公众号 entry in left sidebar
+- 2. Find and click latest article
+- 3. Extract article content
+- 4. Send to文件传输助手
+  </plans>
+</response>
 ~~~
 
 Final response:
-~~~json
-{
-  "thoughts": ["Task done, sending final response"],
-  "tool_name": "response",
-  "tool_args": { "text": "Completed. Final result prepared." }
-}
+~~~xml
+<response>
+  <thoughts>Task completed successfully</thoughts>
+  <headline>Send final response</headline>
+  <tool_name>response</tool_name>
+  <tool_args>
+    <text>Completed. Final result prepared.</text>
+  </tool_args>
+</response>
 ~~~
 
 {{ include "agent.system.main.computer_usage.md" }}

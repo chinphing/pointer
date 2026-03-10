@@ -1,26 +1,113 @@
+from math import e
 import re, os, importlib, importlib.util, inspect
+import json
+import regex
+from fnmatch import fnmatch
 from types import ModuleType
 from typing import Any, Type, TypeVar
 from .dirty_json import DirtyJson
 from .files import get_abs_path, deabsolute_path
-import regex
-from fnmatch import fnmatch
 
-def json_parse_dirty(json:str) -> dict[str,Any] | None:
-    if not json or not isinstance(json, str):
+try:
+    import sloppy_xml as sloppyxml
+    SLOPPYXML_AVAILABLE = True
+except ImportError:
+    SLOPPYXML_AVAILABLE = False
+
+
+def json_parse_dirty(json_str: str) -> dict[str, Any] | None:
+    if not json_str or not isinstance(json_str, str):
         return None
 
-    ext_json = extract_json_object_string(json.strip())
-    if ext_json:
-        try:
-            data = DirtyJson.parse_string(ext_json)
-            if isinstance(data,dict): return data
-        except Exception:
-            # If parsing fails, return None instead of crashing
-            return None
-    return None
+    try:
+        return parse_xml_to_dict(json_str.strip())
+    except Exception:
+        return None
 
+
+def parse_xml_to_dict(xml_str: str) -> dict:
+    """Parse XML format to dict using sloppy-xml for incomplete XML."""
+    if not SLOPPYXML_AVAILABLE:
+        raise ImportError("sloppy-xml not available")
+    
+    content = xml_str.strip()
+    
+    # Use sloppy-xml to parse incomplete XML
+    try:
+        parsed_tree = sloppyxml.tree_parse(content)
+        # Convert ElementTree to dict
+        result = element_to_dict(parsed_tree)
+        return result
+    except Exception as e:
+        raise ValueError(f"Failed to parse XML with sloppy-xml: {e}")
+
+
+def element_to_dict(element) -> dict:
+    """Convert xml.etree.ElementTree.Element to dict."""
+    result = {}
+    
+    for child in element.iter():
+        tag = child.tag
+        text = (child.text or "").strip()
+        
+        if tag == "tool_args":
+            # Parse nested structure within tool_args
+            result['tool_args'] = parse_xml_args_element(child)
+        elif tag == "plans":
+            # Parse plans as markdown list
+            plans_text = text
+            plans = []
+            for line in plans_text.split('\n'):
+                line = line.strip()
+                if line.startswith('-'):
+                    plans.append(line[1:].strip())
+                else:
+                    plans.append(line.strip())
+            if plans:
+                result['plans'] = plans
+        else:
+            # Simple text content
+            result[tag] = text
+    
+    return result
+
+
+def parse_xml_args_element(element) -> dict:
+    """Parse XML element's children as dict."""
+    result = {}
+    for child in element.iter():
+        tag = child.tag
+        text = (child.text or "").strip()
+        
+        # Try to convert to number
+        try:
+            if '.' in text:
+                result[tag] = float(text)
+            else:
+                result[tag] = int(text)
+        except ValueError:
+            result[tag] = text
+    
+    return result
+
+
+def convert_xml_to_dict(xml_str: str) -> dict:
+    """Convert XML format to JSON for parsing - uses sloppy-xml."""
+    return parse_xml_to_dict(xml_str)
+
+
+# Keep legacy function names for compatibility
 def extract_json_object_string(content):
+    # Try XML format first (no outer <response> tag)
+    xml_patterns = ['<thoughts>', '<tool_name>', '<headline>']
+    if any(p in content for p in xml_patterns):
+        try:
+            json_str = json.dumps(convert_xml_to_dict(content))
+            return json_str
+        except Exception:
+            pass  # Fall back to JSON parsing
+    
+    # Fall back to JSON format
     start = content.find('{')
     if start == -1:
         return ""
@@ -28,11 +115,10 @@ def extract_json_object_string(content):
     # Find the first '{'
     end = content.rfind('}')
     if end == -1:
-        # If there's no closing '}', return from start to the end
         return content[start:]
     else:
-        # If there's a closing '}', return the substring from start to end
         return content[start:end+1]
+
 
 def extract_json_string(content):
     # Regular expression pattern to match a JSON object
@@ -46,6 +132,7 @@ def extract_json_string(content):
         return match.group(0)
     else:
         return ""
+
 
 def fix_json_string(json_string):
     # Function to replace unescaped line breaks within JSON string values

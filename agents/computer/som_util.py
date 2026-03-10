@@ -441,9 +441,9 @@ class BoxAnnotator:
         预测图片中的物体并进行标注，返回一张标注图与所有检测框（按左右上下次序排序）。
         返回: ( 标注图, boxes_sorted )
         """
-        boxes_with_scores = self.predict(image, threshold=threshold)
+        boxes_with_scores_rfdetr = self.predict(image, threshold=threshold)
         boxes_with_scores_ocr = self.predict_with_ocr(image, padding=padding)
-        boxes_with_scores = [*boxes_with_scores, *boxes_with_scores_ocr]
+        boxes_with_scores = [*boxes_with_scores_rfdetr, *boxes_with_scores_ocr]
         boxes_with_scores_trimmed = trim_by_overlab_optimize(boxes_with_scores, overlap_threshold=overlap_threshold)
         boxes_sorted = _sort_boxes_lrtb([b[0] for b in boxes_with_scores_trimmed])
         annotated_img = self.annotate(boxes_sorted, image)
@@ -451,7 +451,7 @@ class BoxAnnotator:
 
 if __name__ == "__main__":
     base_dir = "/Users/yunyun/Desktop/agent-zero"
-    image = Image.open(base_dir + "/yindeng1.png")
+    image = Image.open(base_dir + "/small_3x.png")
     box_annotator = BoxAnnotator()
     annotated_img, boxes = box_annotator.predict_and_annotate_all(image)
     annotated_img.save(base_dir + "/test_annotated.png")

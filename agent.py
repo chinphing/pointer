@@ -962,7 +962,11 @@ class Agent:
         try:
             if len(stream) < 25:
                 return  # no reason to try
-            response = DirtyJson.parse_string(stream)
+            
+            # Use XML parser with lxml recover mode
+            from python.helpers.extract_tools import parse_xml_to_dict
+            response = parse_xml_to_dict(stream)
+            
             if isinstance(response, dict):
                 await self.call_extensions(
                     "response_stream",

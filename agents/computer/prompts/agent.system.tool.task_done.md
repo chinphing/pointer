@@ -14,13 +14,15 @@ It merges all extracts for the `task_index` and saves formal output.
 
 Example:
 
-~~~json
-{
-    "thoughts": ["Subtask 2 extraction complete, merging and saving result"],
-    "tool_name": "task_done:merge",
-    "tool_args": { "task_index": 2 }
-}
-~~~
+```xml
+<response>
+  <thoughts>Subtask 2 extraction complete, merging and saving result</thoughts>
+  <tool_name>task_done:merge</tool_name>
+  <tool_args>
+    <task_index>2</task_index>
+  </tool_args>
+</response>
+```
 
 ---
 
@@ -35,13 +37,14 @@ Do not call `task_done:read` before saving all required data - it will be empty.
 
 Example:
 
-~~~json
-{
-    "thoughts": ["All subtasks complete, loading saved results for final response"],
-    "tool_name": "task_done:read",
-    "tool_args": {}
-}
-~~~
+```xml
+<response>
+  <thoughts>All subtasks complete, loading saved results for final response</thoughts>
+  <tool_name>task_done:read</tool_name>
+  <tool_args>
+  </tool_args>
+</response>
+```
 
 **Workflow summary:**
 1. For each subtask: `extract_data:extract` (multiple times) → `task_done:merge` (once per subtask)

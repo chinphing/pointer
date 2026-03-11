@@ -12,7 +12,9 @@ class ResponseTool(Tool):
         return Response(message=text, break_loop=True)
 
     async def before_execution(self, **kwargs):
-        pass
+        self.agent.context.log.log(type="response", 
+            heading=f"{self.agent.agent_name}: Responding", content=self.args.get("text", ""))
+        
 
     async def after_execution(self, response, **kwargs):
         if self.loop_data and "log_item_response" in self.loop_data.params_temporary:

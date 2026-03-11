@@ -15,12 +15,12 @@ except ImportError:
     SLOPPYXML_AVAILABLE = False
 
 
-def json_parse_dirty(json_str: str) -> dict[str, Any] | None:
-    if not json_str or not isinstance(json_str, str):
+def xml_parse_dirty(xml_str: str) -> dict[str, Any] | None:
+    if not xml_str or not isinstance(xml_str, str):
         return None
 
     try:
-        return parse_xml_to_dict(json_str.strip())
+        return parse_xml_to_dict(xml_str.strip())
     except Exception:
         return None
 

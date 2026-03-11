@@ -35,7 +35,6 @@ from python.helpers.localization import Localization
 from python.helpers.extension import call_extensions
 from python.helpers.errors import RepairableException
 
-
 class AgentContextType(Enum):
     USER = "user"
     TASK = "task"
@@ -859,7 +858,7 @@ class Agent:
 
     async def process_tools(self, msg: str):
         # search for tool usage requests in agent message
-        tool_request = extract_tools.json_parse_dirty(msg)
+        tool_request = extract_tools.xml_parse_dirty(msg)
 
         if tool_request is not None:
             raw_tool_name = tool_request.get("tool_name", tool_request.get("tool",""))  # Get the raw tool name

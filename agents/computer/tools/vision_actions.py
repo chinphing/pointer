@@ -39,6 +39,8 @@ class VisionActionsTool(Tool):
                 "result": (response.message or "").strip(),
             },
         )
+        # wait for ui to load. 
+        time.sleep(0.5)
         await super().after_execution(response, **kwargs)
 
     def _resolve_index(

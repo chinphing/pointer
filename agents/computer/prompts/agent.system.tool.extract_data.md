@@ -10,13 +10,13 @@ Extract current visible content as markdown and append to task temp storage.
 5. **Step 5**: When later work needs saved data: call `task_done:read`
 
 Example:
-~~~json
-{
-    "thoughts": ["Extracting current visible article segment for task 2"],
-    "tool_name": "extract_data:extract",
-    "tool_args": {
-        "instruction": "Extract visible article text as markdown",
-        "task_index": 2
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>Extracting current visible article segment for task 2</thoughts>
+  <tool_name>extract_data:extract</tool_name>
+  <tool_args>
+    <instruction>Extract visible article text as markdown</instruction>
+    <task_index>2</task_index>
+  </tool_args>
+</response>
+```

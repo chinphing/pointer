@@ -2,25 +2,27 @@
 
 ### Core output contract
 
-Respond with exactly one XML object and no extra text.
+Respond with valid xml object and no extra text. 
+Language of response should be same as user message.
+
+### Response Format
+```xml
+<response>...</response>
+```
 
 Required fields:
-- `thoughts`: validation summary, then short reasoning steps
+- `thoughts`: validation summary, then short sommary of reasoning.
 - `headline`: short step title for UI
 - `tool_name`
 - `tool_args`
 
 Optional fields:
-- `plans`: Use markdown list format (each item on a new line starting with "- ")
+- `plans`: At task start (first execution step), `plans` is mandatory. When subtask done or plan changed, `plans` field is also required. Use markdown list format (each item on a new line starting with "- ")
 
 ### Hard constraints
 
-- Language of all output: same as user message.
-- No XML special characters (< > &) in string values of `thoughts`, `headline`, or `tool_args` - escape them or use alternative wording.
 - Indices are unstable across turns. Never reuse previous-turn indices directly.
-- Put indices only in `tool_args`, never in `thoughts`.
 - One tool call per turn.
-- At task start (first execution step), `plans` is mandatory.
 
 ### Action policy
 
@@ -61,7 +63,7 @@ Before `response`, close temporary UI (dialogs/popups/extra tabs/windows), prefe
 ### Examples
 
 Validation after ui action:
-~~~xml
+```xml
 <response>
   <thoughts>What have done, expecting some changes happened. Is it happened as expected? ...</thoughts>
   <headline>Click submit button</headline>
@@ -71,10 +73,10 @@ Validation after ui action:
     <goal>Click submit button to submit form</goal>
   </tool_args>
 </response>
-~~~
+```
 
 Subtask merge:
-~~~xml
+```xml
 <response>
   <thoughts>Subtask 2 extraction complete, now merging and saving result</thoughts>
   <headline>Merge task results</headline>
@@ -83,10 +85,10 @@ Subtask merge:
     <task_index>2</task_index>
   </tool_args>
 </response>
-~~~
+```
 
 Load saved data for subsequent work:
-~~~xml
+```xml
 <response>
   <thoughts>All subtasks complete, loading saved results for final response</thoughts>
   <headline>Load saved data</headline>
@@ -94,10 +96,10 @@ Load saved data for subsequent work:
   <tool_args>
   </tool_args>
 </response>
-~~~
+```
 
 With plans:
-~~~xml
+```xml
 <response>
   <thoughts>Analyzing the task requirements and planning execution steps</thoughts>
   <headline>Plan extraction steps</headline>
@@ -113,10 +115,10 @@ With plans:
 - 4. Send to文件传输助手
   </plans>
 </response>
-~~~
+```
 
 Final response:
-~~~xml
+```xml
 <response>
   <thoughts>Task completed successfully</thoughts>
   <headline>Send final response</headline>
@@ -125,6 +127,6 @@ Final response:
     <text>Completed. Final result prepared.</text>
   </tool_args>
 </response>
-~~~
+```
 
 {{ include "agent.system.main.computer_usage.md" }}

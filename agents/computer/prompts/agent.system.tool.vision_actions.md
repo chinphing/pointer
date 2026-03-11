@@ -33,10 +33,13 @@ Parameter constraints:
 5. When later work needs saved data: call `task_done:read`
 
 Example:
-~~~json
-{
-  "thoughts": ["Clicking submit button in bottom right to submit form"],
-  "tool_name": "vision_actions:click_index",
-  "tool_args": { "index": 4, "goal": "Click submit button to submit form" }
-}
-~~~
+```xml
+<response>
+  <thoughts>Clicking submit button in bottom right to submit form</thoughts>
+  <tool_name>vision_actions:click_index</tool_name>
+  <tool_args>
+    <index>4</index>
+    <goal>Click submit button to submit form</goal>
+  </tool_args>
+</response>
+```

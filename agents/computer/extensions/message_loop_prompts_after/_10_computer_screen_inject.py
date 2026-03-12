@@ -30,6 +30,7 @@ if _COMPUTER_DIR not in sys.path:
 
 import pyautogui  # noqa: E402
 import rtree  # noqa: E402
+import coord_convert  # noqa: E402
 import screen as screen_mod  # noqa: E402
 import som_util  # noqa: E402
 import os_prompts  # noqa: E402
@@ -328,7 +329,13 @@ class ComputerScreenInject(Extension):
             self.agent.set_data("computer_vision_index_map", {})
             err_preview = "No interactive elements detected."
 
-        # Mouse position: draw on annotated image and expose exact coords in prompt for post-action feedback
+        # Coordinate system for absolute positioning: model outputs normalized; we convert to pixels when executing.
+        coord_system = self.agent.get_data("computer_vision_coord_system") or "qwen"
+        if coord_system not in coord_convert.list_systems():
+            coord_system = "qwen"
+        norm_range = "x and y in [0, 1000]" if coord_system == "qwen" else ("x and y in [0, 1]" if coord_system == "kimi" else "screenshot pixels")
+
+        # Mouse position: draw on annotated image; show normalized coords in prompt so model sees same scale as its output
         mouse_ix, mouse_iy = None, None
         mouse_coords_str = "Mouse: position unavailable."
         try:
@@ -337,9 +344,10 @@ class ComputerScreenInject(Extension):
             mouse_iy = my - mon_top
             if 0 <= mouse_ix < w and 0 <= mouse_iy < h:
                 annotated_img = _draw_mouse_overlay(annotated_img, mouse_ix, mouse_iy)
+                nx, ny = coord_convert.pixel_to_normalized(mouse_ix, mouse_iy, coord_system, w, h)
                 mouse_coords_str = (
-                    f"Current mouse position (screenshot coords, origin top-left): ({int(mouse_ix)}, {int(mouse_iy)}). "
-                    "After an action, compare with the next turn mouse position to judge whether the click landed on target or deviated, and adjust strategy."
+                    f"Current mouse position (normalized, same scale as your output): ({round(nx, 2)}, {round(ny, 2)}). "
+                    "After an action, compare with the next turn mouse position to judge whether the click landed on target or deviated."
                 )
             else:
                 mouse_coords_str = "Mouse: outside captured area."
@@ -364,20 +372,27 @@ class ComputerScreenInject(Extension):
             nearest_ids = list(idx_rtree.nearest((mouse_ix, mouse_iy, mouse_ix, mouse_iy), 5))
             nearest_items = [(i, im_boxes[i]) for i in nearest_ids]
 
-            def _fmt(items: List[Tuple[int, Tuple[float, float, float, float]]]) -> str:
+            def _fmt_norm(items: List[Tuple[int, Tuple[float, float, float, float]]], iw: int, ih: int, sys: str) -> str:
                 if not items:
                     return "none"
-                return "; ".join(f"index {idx} (x1,y1,x2,y2)=({int(round(x1))},{int(round(y1))},{int(round(x2))},{int(round(y2))})" for idx, (x1, y1, x2, y2) in items)
+                parts = []
+                for idx, (x1, y1, x2, y2) in items:
+                    n1x, n1y = coord_convert.pixel_to_normalized(x1, y1, sys, iw, ih)
+                    n2x, n2y = coord_convert.pixel_to_normalized(x2, y2, sys, iw, ih)
+                    parts.append(f"index {idx} (x1,y1,x2,y2)=({round(n1x, 2)},{round(n1y, 2)},{round(n2x, 2)},{round(n2y, 2)})")
+                return "; ".join(parts)
 
             reference_bbox_text = (
-                " Reference bboxes (screenshot origin top-left 0,0). 5 nearest marked elements to the mouse: "
-                f"{_fmt(nearest_items)}. "
-                "When inferring target coordinates for click_at/type_text_at: first decide whether the target is INSIDE or OUTSIDE the reference bbox. "
-                "If INSIDE: derive x, y as a point within the reference bbox (e.g. center of the bbox, or estimate from the target's position within the box—left/center/right horizontally, top/center/bottom vertically). "
-                "If OUTSIDE: consider which of the four sides it lies (above, below, left, or right of the reference element) and derive x, y accordingly. Use the screenshot width and height as the coordinate range: x in [0, image width], y in [0, image height]. Do not use normalized coordinates (e.g. 0-1 or 0-1000)."
+                " Reference bboxes (normalized, same scale as your output). 5 nearest marked elements to the mouse: "
+                f"{_fmt_norm(nearest_items, w, h, coord_system)}. "
+                "Coordinate-based principles: (1) Reference bbox must have explicit coordinates above and be very close to the target (within 50 pixels). "
+                "(2) Derive x, y using the reference element as anchor; do not guess coordinates without a clear basis. "
+                "(3) Generally: first hover_index to a marked element near the target, then use coordinate-based tools with inferred x, y. "
+                "When inferring: decide whether the target is INSIDE or OUTSIDE the chosen reference bbox; This is very important for coordinate-based tools."
+                f"Output x, y in the same normalized system: {norm_range}."
             )
 
-        self.agent.set_data("computer_vision_coordinate_system", "pixel")
+        self.agent.set_data("computer_vision_coordinate_system", coord_system)
         self.agent.set_data(
             "computer_vision_screen_info",
             {
@@ -441,11 +456,6 @@ class ComputerScreenInject(Extension):
             "When multiple boxes could match the same target (e.g. a button inside a larger container), prefer the index whose bbox tightly wraps the target (smallest fit) for precise positioning; avoid the index of a larger bbox that merely contains it."
         )
         n_total = len(index_map)
-        valid_indices_text = (
-            f" Valid indices: 1 to {n_total}. " if index_map else ""
-        ) + (
-            "Use index-based tools when the target has an index; when the target has no index use coordinate-based tools (click_at, double_click_at, right_click_at, hover_at, type_text_at) with x, y in screenshot pixels. Coordinate range: x in [0, image width], y in [0, image height]—use screenshot dimensions as range; do not use normalized coordinates (e.g. 0-1 or 0-1000). When using reference bboxes: first consider whether the target is INSIDE or OUTSIDE the reference bbox. If inside: infer x, y as a point within the bbox (e.g. bbox center or target position within the box). If outside: consider the four directions (above, below, left, right) relative to the reference element to infer x, y. For index-based delta: delta_x > 0 from right edge, < 0 from left; delta_y > 0 from bottom, < 0 from top." if index_map else ""
-        )
         content = []
         env_text = _build_environment_text(w, h)
         content.append({"type": "text", "text": env_text})
@@ -462,11 +472,7 @@ class ComputerScreenInject(Extension):
                 + annotation_help
                 + f" Image size: {w}×{h} pixels. Origin: top-left (0,0). "
                 + "The annotated image shows the current mouse cursor (red circle/crosshair). "
-                + mouse_coords_str + " "
-                + "You can use coordinate-based tools (click_at, double_click_at, right_click_at, hover_at, type_text_at) with x, y in screenshot pixels. When reasoning coordinates: use the screenshot width and height as the range (x in [0, image width], y in [0, image height]); do not use normalized coordinates (e.g. 0-1 or 0-1000). When reasoning from reference bboxes: first decide if the target is INSIDE or OUTSIDE the reference bbox; then if outside, use the four directions (above, below, left, right) relative to the reference element to infer the target position. "
-                + "For coordinate-based positioning: each step that brings the pointer closer to the target counts as success; you may try up to 3 times—no need to hit the target in one shot. "
-                + "Use index-based tools when the target has an index. "
-                + valid_indices_text
+                + mouse_coords_str + "\n"
                 + reference_bbox_text
                 + " When referring to elements, describe their position (e.g. top-left, center, bottom-right)."
             ),

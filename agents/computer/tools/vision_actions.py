@@ -20,21 +20,12 @@ if _COMPUTER_DIR not in sys.path:
     sys.path.insert(0, _COMPUTER_DIR)
 
 from actions import ActionTools  # noqa: E402
+from coord_convert import normalized_to_screen  # noqa: E402
 
 
 LAST_VISION_ACTION_KEY = "computer_last_vision_action"
 
 COORD_METHODS = ("click_at", "double_click_at", "right_click_at", "hover_at", "type_text_at")
-
-
-def _image_to_screen_pos(x: Any, y: Any, mon_left: int, mon_top: int) -> List[int]:
-    """Convert screenshot (image) coordinates (origin top-left 0,0) to screen coordinates."""
-    try:
-        ix = int(round(float(x)))
-        iy = int(round(float(y)))
-    except (TypeError, ValueError):
-        raise ValueError("x and y must be numeric (screenshot pixels, origin top-left).")
-    return [ix + mon_left, iy + mon_top]
 
 
 class VisionActionsTool(Tool):
@@ -81,8 +72,9 @@ class VisionActionsTool(Tool):
         index: int,
         delta_x: Any,
         delta_y: Any,
+        target_in_bbox: str = "outside",
     ) -> List[int]:
-        """Resolve position: target is assumed outside the bbox. Reference = right when going right, left when going left; bottom when going down, top when going up; then add delta."""
+        """Resolve position. Reference edge same for inside/outside (by delta sign). When target_in_bbox is 'inside', offset is negated (negative direction from edge into bbox)."""
         entry = index_map[index]
         cx = float(entry["x"])
         cy = float(entry["y"])
@@ -100,9 +92,12 @@ class VisionActionsTool(Tool):
             dy_val = 0
         if dx_val == 0 and dy_val == 0:
             return [int(round(cx)), int(round(cy))]
+        inside = str(target_in_bbox).strip().lower() == "inside"
+        offset_x = -dx_val if inside else dx_val
+        offset_y = -dy_val if inside else dy_val
         base_x = right if dx_val > 0 else (left if dx_val < 0 else cx)
         base_y = bottom if dy_val > 0 else (top if dy_val < 0 else cy)
-        return [int(round(base_x + dx_val)), int(round(base_y + dy_val))]
+        return [int(round(base_x + offset_x)), int(round(base_y + offset_y))]
 
     def _infer_method(self, args: Dict[str, Any]) -> str:
         if "text" in args and args.get("text") is not None:
@@ -169,20 +164,32 @@ class VisionActionsTool(Tool):
                 return Response(message=f"Goal: {goal}. tool_args: {self._tool_args_for_response(args)}. Action executed; verify result on next screenshot.", break_loop=False)
             except Exception as e:
                 return Response(message=str(e), break_loop=False)
-        # Coordinate-based methods: x, y in screenshot pixels (origin top-left 0,0); convert to screen via screen_info
+        # Coordinate-based methods: x, y are model-normalized; convert to screen pixels via screen_info and coord system
         if method in COORD_METHODS:
             screen_info = self.agent.get_data("computer_vision_screen_info") or {}
+            coord_system = (self.agent.get_data("computer_vision_coordinate_system") or "qwen").strip().lower()
             mon_left = int(screen_info.get("mon_left") or 0)
             mon_top = int(screen_info.get("mon_top") or 0)
+            width = int(screen_info.get("width") or 0)
+            height = int(screen_info.get("height") or 0)
             x_arg, y_arg = args.get("x"), args.get("y")
             if x_arg is None or y_arg is None:
                 return Response(
-                    message="Coordinate-based methods require 'x' and 'y' (screenshot pixels, origin top-left 0,0).",
+                    message="Coordinate-based methods require 'x' and 'y' (normalized coordinates, same scale as in the prompt).",
+                    break_loop=False,
+                )
+            if width <= 0 or height <= 0:
+                return Response(
+                    message="Screen dimensions not available; ensure screen inject ran this turn.",
                     break_loop=False,
                 )
             try:
-                pos = _image_to_screen_pos(x_arg, y_arg, mon_left, mon_top)
-            except ValueError as e:
+                sx, sy = normalized_to_screen(
+                    float(x_arg), float(y_arg),
+                    coord_system, width, height, mon_left, mon_top,
+                )
+                pos = [sx, sy]
+            except (ValueError, TypeError) as e:
                 return Response(message=str(e), break_loop=False)
             if method == "click_at":
                 actions._click(pos)
@@ -242,9 +249,17 @@ class VisionActionsTool(Tool):
             if method == "drag_index_to_index":
                 pos = self._resolve_index(index_map, index)
             else:
+                in_bbox = (args.get("target_in_bbox") or "outside")
+                if isinstance(in_bbox, str):
+                    in_bbox = in_bbox.strip().lower()
+                    if in_bbox not in ("inside", "outside"):
+                        in_bbox = "outside"
+                else:
+                    in_bbox = "outside"
                 pos = self._resolve_position(
                     index_map, index,
                     args.get("delta_x"), args.get("delta_y"),
+                    target_in_bbox=in_bbox,
                 )
         except ValueError as e:
             return Response(message=str(e), break_loop=False)
@@ -320,6 +335,6 @@ class VisionActionsTool(Tool):
             return Response(message=f"Goal: {goal}. tool_args: {self._tool_args_for_response(args)}. Action executed; verify result on next screenshot.", break_loop=False)
 
         return Response(
-            message=f"Unknown method: {method}. Use index-based (click_index, double_click_index, type_text_at_index, right_click_index, hover_index, drag_index_to_index, scroll_at_index), coordinate-based (click_at, double_click_at, right_click_at, hover_at, type_text_at with x,y in screenshot pixels), type_text_focused, press_keys, or wait.",
+            message=f"Unknown method: {method}. Use index-based (click_index, double_click_index, type_text_at_index, right_click_index, hover_index, drag_index_to_index, scroll_at_index), coordinate-based (click_at, double_click_at, right_click_at, hover_at, type_text_at with x,y in normalized coords), type_text_focused, press_keys, or wait.",
             break_loop=False,
         )

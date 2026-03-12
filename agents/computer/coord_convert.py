@@ -78,3 +78,25 @@ def normalized_to_screen(
 def list_systems() -> Tuple[str, ...]:
     """返回已注册的坐标系名称。"""
     return tuple(_REGISTRY.keys())
+
+
+def pixel_to_normalized(
+    px: float,
+    py: float,
+    system: str,
+    image_width: int,
+    image_height: int,
+) -> Tuple[float, float]:
+    """
+    将截图像素坐标转换为模型归一化坐标（用于在提示词中展示，与模型输出一致）。
+    system: 如 "qwen" (0–1000), "kimi" (0–1), "pixel" 则返回原样。
+    """
+    if image_width <= 0 or image_height <= 0:
+        raise ValueError("image_width and image_height must be positive.")
+    if system == "qwen":
+        return (px / image_width * 1000.0, py / image_height * 1000.0)
+    if system == "kimi":
+        return (px / image_width, py / image_height)
+    if system == "pixel":
+        return (px, py)
+    raise ValueError(f"Unknown coordinate system: {system}. Known: {list(_REGISTRY.keys())}.")

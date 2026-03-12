@@ -199,6 +199,7 @@ class BoxAnnotator:
         self.thickness = thickness
 
         self.model = RFDETRMedium(pretrain_weights=pretrain_weights, resolution=resolution)
+        # self.model.optimize_for_inference()
         self._text_detection: Optional[object] = None  # lazy: only loaded when predict_with_ocr is used (avoids paddle/pyharp/netcdf at startup)
 
     @property

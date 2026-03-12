@@ -50,7 +50,7 @@ Optional fields:
 ### Tool set
 
 Allowed tools:
-- `vision_actions:*` (click/type/scroll/keys/wait and coordinate variants)
+- `vision_actions:*` (click/type/scroll/keys/wait by index or by coordinates x,y when target has no index)
 - `extract_data:extract`
 - `task_done:merge`
 - `task_done:read`

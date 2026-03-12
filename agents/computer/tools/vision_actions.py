@@ -20,10 +20,21 @@ if _COMPUTER_DIR not in sys.path:
     sys.path.insert(0, _COMPUTER_DIR)
 
 from actions import ActionTools  # noqa: E402
-from coord_convert import normalized_to_screen  # noqa: E402
 
 
 LAST_VISION_ACTION_KEY = "computer_last_vision_action"
+
+COORD_METHODS = ("click_at", "double_click_at", "right_click_at", "hover_at", "type_text_at")
+
+
+def _image_to_screen_pos(x: Any, y: Any, mon_left: int, mon_top: int) -> List[int]:
+    """Convert screenshot (image) coordinates (origin top-left 0,0) to screen coordinates."""
+    try:
+        ix = int(round(float(x)))
+        iy = int(round(float(y)))
+    except (TypeError, ValueError):
+        raise ValueError("x and y must be numeric (screenshot pixels, origin top-left).")
+    return [ix + mon_left, iy + mon_top]
 
 
 class VisionActionsTool(Tool):
@@ -46,7 +57,7 @@ class VisionActionsTool(Tool):
     def _resolve_index(
         self, index_map: Dict[int, Dict[str, float]], index: int
     ) -> List[int]:
-        """Resolve index_map to screen pixel coordinates [x, y]."""
+        """Resolve index_map to screen pixel coordinates [x, y] (center)."""
         if not index_map:
             raise ValueError("index_map is empty. Ensure screen inject (vision route) has run to generate index_map.")
         if index not in index_map:
@@ -59,25 +70,39 @@ class VisionActionsTool(Tool):
             raise ValueError(f"Invalid index_map entry for index {index}: {e}.") from e
         return [x, y]
 
-    def _resolve_coord(self, x_val: float, y_val: float) -> List[int]:
-        """Convert model-normalized coordinates (x, y) to screen pixels [sx, sy]."""
-        screen_info = self.agent.get_data("computer_vision_screen_info") or {}
-        w = screen_info.get("width")
-        h = screen_info.get("height")
-        mon_left = screen_info.get("mon_left", 0)
-        mon_top = screen_info.get("mon_top", 0)
-        if w is None or h is None:
-            raise ValueError(
-                "No screen info. Ensure the computer screen inject ran for this turn."
-            )
-        # When inject set pixel mode, use it; else config (qwen/kimi) or default qwen
-        system = self.agent.get_data("computer_vision_coordinate_system") or getattr(
-            self.agent.config, "vision_coordinate_system", "qwen"
-        )
-        sx, sy = normalized_to_screen(
-            float(x_val), float(y_val), system, int(w), int(h), int(mon_left), int(mon_top)
-        )
-        return [sx, sy]
+    def _tool_args_for_response(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Build tool_args for response message: exclude index/to_index (no raw coordinates)."""
+        exclude = {"index", "to_index"}
+        return {k: v for k, v in args.items() if k not in exclude}
+
+    def _resolve_position(
+        self,
+        index_map: Dict[int, Dict[str, float]],
+        index: int,
+        delta_x: Any,
+        delta_y: Any,
+    ) -> List[int]:
+        """Resolve position: target is assumed outside the bbox. Reference = right when going right, left when going left; bottom when going down, top when going up; then add delta."""
+        entry = index_map[index]
+        cx = float(entry["x"])
+        cy = float(entry["y"])
+        left = float(entry.get("left", cx - 1))
+        top = float(entry.get("top", cy - 1))
+        right = float(entry.get("right", 2 * cx - left))
+        bottom = float(entry.get("bottom", 2 * cy - top))
+        try:
+            dx_val = int(round(float(delta_x))) if delta_x is not None else 0
+        except (TypeError, ValueError):
+            dx_val = 0
+        try:
+            dy_val = int(round(float(delta_y))) if delta_y is not None else 0
+        except (TypeError, ValueError):
+            dy_val = 0
+        if dx_val == 0 and dy_val == 0:
+            return [int(round(cx)), int(round(cy))]
+        base_x = right if dx_val > 0 else (left if dx_val < 0 else cx)
+        base_y = bottom if dy_val > 0 else (top if dy_val < 0 else cy)
+        return [int(round(base_x + dx_val)), int(round(base_y + dy_val))]
 
     def _infer_method(self, args: Dict[str, Any]) -> str:
         if "text" in args and args.get("text") is not None:
@@ -116,8 +141,8 @@ class VisionActionsTool(Tool):
             else:
                 keys = list(keys)
             try:
-                result = actions._press_keys(keys)
-                return Response(message=result, break_loop=False)
+                actions._press_keys(keys)
+                return Response(message=f"Goal: {goal}. tool_args: {self._tool_args_for_response(args)}. Action executed; verify result on next screenshot.", break_loop=False)
             except Exception as e:
                 return Response(message=str(e), break_loop=False)
         if method == "wait":
@@ -140,93 +165,51 @@ class VisionActionsTool(Tool):
                     break_loop=False,
                 )
             try:
-                result = actions._wait(sec)
-                return Response(message=result, break_loop=False)
+                actions._wait(sec)
+                return Response(message=f"Goal: {goal}. tool_args: {self._tool_args_for_response(args)}. Action executed; verify result on next screenshot.", break_loop=False)
             except Exception as e:
                 return Response(message=str(e), break_loop=False)
-        # Coordinate-based methods: absolute (x, y) or relative to anchor_index (pixels)
-        def _get_pos_for_coord_action():
-            anchor = args.get("anchor_index")
-            if anchor is not None:
-                index_map_rel = self.agent.get_data("computer_vision_index_map") or {}
-                if not index_map_rel:
-                    return None, "anchor_index requires index_map (ensure screen inject ran)."
-                try:
-                    base = self._resolve_index(index_map_rel, int(anchor))
-                except (ValueError, TypeError) as e:
-                    return None, str(e)
-                offset_x, offset_y = args.get("offset_x"), args.get("offset_y")
-                direction = (args.get("direction") or "").strip().lower()
-                pixels = args.get("pixels")
-                if offset_x is not None or offset_y is not None:
-                    dx = int(round(float(offset_x or 0)))
-                    dy = int(round(float(offset_y or 0)))
-                elif direction and pixels is not None:
-                    try:
-                        p = int(round(float(pixels)))
-                    except (TypeError, ValueError):
-                        return None, f"Invalid 'pixels' value: {pixels}."
-                    dir_map = {
-                        "right": (p, 0), "left": (-p, 0),
-                        "above": (0, -p), "up": (0, -p),
-                        "below": (0, p), "down": (0, p),
-                    }
-                    if direction not in dir_map:
-                        return None, "direction must be one of: left, right, above, below, up, down."
-                    dx, dy = dir_map[direction]
-                else:
-                    return None, "With anchor_index provide offset_x/offset_y (pixels) or direction + pixels."
-                return [base[0] + dx, base[1] + dy], None
+        # Coordinate-based methods: x, y in screenshot pixels (origin top-left 0,0); convert to screen via screen_info
+        if method in COORD_METHODS:
+            screen_info = self.agent.get_data("computer_vision_screen_info") or {}
+            mon_left = int(screen_info.get("mon_left") or 0)
+            mon_top = int(screen_info.get("mon_top") or 0)
             x_arg, y_arg = args.get("x"), args.get("y")
             if x_arg is None or y_arg is None:
-                return None, "Missing 'x'/'y' or anchor_index (+ offset_x/offset_y or direction + pixels)."
+                return Response(
+                    message="Coordinate-based methods require 'x' and 'y' (screenshot pixels, origin top-left 0,0).",
+                    break_loop=False,
+                )
             try:
-                pos = self._resolve_coord(float(x_arg), float(y_arg))
-                return pos, None
+                pos = _image_to_screen_pos(x_arg, y_arg, mon_left, mon_top)
             except ValueError as e:
-                return None, str(e)
-
-        if method == "click_at":
-            pos, err = _get_pos_for_coord_action()
-            if err:
-                return Response(message=err, break_loop=False)
-            result = actions._click(pos)
-            return Response(message=result, break_loop=False)
-        if method == "double_click_at":
-            pos, err = _get_pos_for_coord_action()
-            if err:
-                return Response(message=err, break_loop=False)
-            result = actions._double_click(pos)
-            return Response(message=result, break_loop=False)
-        if method == "right_click_at":
-            pos, err = _get_pos_for_coord_action()
-            if err:
-                return Response(message=err, break_loop=False)
-            result = actions._right_click(pos)
-            return Response(message=result, break_loop=False)
-        if method == "hover_at":
-            pos, err = _get_pos_for_coord_action()
-            if err:
-                return Response(message=err, break_loop=False)
-            result = actions._hover(pos)
-            return Response(message=result, break_loop=False)
-        if method == "type_text_at":
-            pos, err = _get_pos_for_coord_action()
-            if err:
-                return Response(message=err, break_loop=False)
-            text = args.get("text", "")
-            click_result = actions._click(pos)
-            type_result = actions._type_text(str(text))
-            return Response(
-                message=f"{click_result} {type_result}", break_loop=False
-            )
+                return Response(message=str(e), break_loop=False)
+            if method == "click_at":
+                actions._click(pos)
+                return Response(message=f"Goal: {goal}. tool_args: {self._tool_args_for_response(args)}. Action executed; verify result on next screenshot.", break_loop=False)
+            if method == "double_click_at":
+                actions._double_click(pos)
+                return Response(message=f"Goal: {goal}. tool_args: {self._tool_args_for_response(args)}. Action executed; verify result on next screenshot.", break_loop=False)
+            if method == "right_click_at":
+                actions._right_click(pos)
+                return Response(message=f"Goal: {goal}. tool_args: {self._tool_args_for_response(args)}. Action executed; verify result on next screenshot.", break_loop=False)
+            if method == "hover_at":
+                actions._hover(pos)
+                return Response(message=f"Goal: {goal}. tool_args: {self._tool_args_for_response(args)}. Action executed; verify result on next screenshot.", break_loop=False)
+            if method == "type_text_at":
+                text = args.get("text", "")
+                if not text:
+                    return Response(message="Missing 'text' in tool_args for type_text_at.", break_loop=False)
+                actions._click(pos)
+                actions._type_text(str(text))
+                return Response(message=f"Goal: {goal}. tool_args: {self._tool_args_for_response(args)}. Action executed; verify result on next screenshot.", break_loop=False)
         if method == "type_text_focused":
             """Type text without clicking - use when the input field already has focus. No index needed."""
             text = args.get("text", "")
             if not text:
                 return Response(message="Missing 'text' in tool_args.", break_loop=False)
-            type_result = actions._type_text(str(text))
-            return Response(message=type_result, break_loop=False)
+            actions._type_text(str(text))
+            return Response(message=f"Goal: {goal}. tool_args: {self._tool_args_for_response(args)}. Action executed; verify result on next screenshot.", break_loop=False)
 
         # Index-based methods require index_map
         index_map: Dict[int, Dict[str, float]] = (
@@ -256,35 +239,41 @@ class VisionActionsTool(Tool):
                 break_loop=False,
             )
         try:
-            pos = self._resolve_index(index_map, index)
+            if method == "drag_index_to_index":
+                pos = self._resolve_index(index_map, index)
+            else:
+                pos = self._resolve_position(
+                    index_map, index,
+                    args.get("delta_x"), args.get("delta_y"),
+                )
         except ValueError as e:
             return Response(message=str(e), break_loop=False)
 
         if method == "click_index":
-            result = actions._click(pos)
-            return Response(message=result, break_loop=False)
+            actions._click(pos)
+            return Response(message=f"Goal: {goal}. tool_args: {self._tool_args_for_response(args)}. Action executed; verify result on next screenshot.", break_loop=False)
         if method == "double_click_index":
-            result = actions._double_click(pos)
-            return Response(message=result, break_loop=False)
+            actions._double_click(pos)
+            return Response(message=f"Goal: {goal}. tool_args: {self._tool_args_for_response(args)}. Action executed; verify result on next screenshot.", break_loop=False)
         if method == "type_text_at_index":
             text = args.get("text", "")
             clear_first = args.get("clear_first", False) if isinstance(args.get("clear_first"), bool) else str(args.get("clear_first", "")).lower() in ("true", "1", "yes")
-            click_result = actions._click(pos)
+            actions._click(pos)
             if clear_first:
                 # Select all (OS-specific) then type to replace existing content
                 mod = "command" if platform.system() == "Darwin" else "ctrl"
-                sel_result = actions._press_keys([mod, "a"])
+                actions._press_keys([mod, "a"])
                 time.sleep(0.1)
-            type_result = actions._type_text(str(text))
+            actions._type_text(str(text))
             return Response(
-                message=f"{click_result} {type_result}", break_loop=False
+                message=f"Goal: {goal}. tool_args: {self._tool_args_for_response(args)}. Action executed; verify result on next screenshot.", break_loop=False
             )
         if method == "right_click_index":
-            result = actions._right_click(pos)
-            return Response(message=result, break_loop=False)
+            actions._right_click(pos)
+            return Response(message=f"Goal: {goal}. tool_args: {self._tool_args_for_response(args)}. Action executed; verify result on next screenshot.", break_loop=False)
         if method == "hover_index":
-            result = actions._hover(pos)
-            return Response(message=result, break_loop=False)
+            actions._hover(pos)
+            return Response(message=f"Goal: {goal}. tool_args: {self._tool_args_for_response(args)}. Action executed; verify result on next screenshot.", break_loop=False)
         if method == "drag_index_to_index":
             to_index_arg = args.get("to_index")
             if to_index_arg is None:
@@ -308,8 +297,8 @@ class VisionActionsTool(Tool):
                 to_pos = self._resolve_index(index_map, to_index)
             except ValueError as e:
                 return Response(message=str(e), break_loop=False)
-            result = actions._drag(pos, to_pos)
-            return Response(message=result, break_loop=False)
+            actions._drag(pos, to_pos)
+            return Response(message=f"Goal: {goal}. tool_args: {self._tool_args_for_response(args)}. Action executed; verify result on next screenshot.", break_loop=False)
         if method == "scroll_at_index":
             amount_arg = args.get("amount")
             if amount_arg is None:
@@ -327,10 +316,10 @@ class VisionActionsTool(Tool):
             if amount == 0:
                 return Response(message="Amount cannot be 0.", break_loop=False)
             scroll_count = amount
-            result = actions._scroll_at(pos, scroll_count)
-            return Response(message=result, break_loop=False)
+            actions._scroll_at(pos, scroll_count)
+            return Response(message=f"Goal: {goal}. tool_args: {self._tool_args_for_response(args)}. Action executed; verify result on next screenshot.", break_loop=False)
 
         return Response(
-            message=f"Unknown method: {method}. Use index-based (click_index, double_click_index, type_text_at_index, right_click_index, hover_index, drag_index_to_index, scroll_at_index), coordinate-based (click_at, double_click_at, right_click_at, hover_at, type_text_at with x,y,text), type_text_focused (when field already focused), press_keys, or wait.",
+            message=f"Unknown method: {method}. Use index-based (click_index, double_click_index, type_text_at_index, right_click_index, hover_index, drag_index_to_index, scroll_at_index), coordinate-based (click_at, double_click_at, right_click_at, hover_at, type_text_at with x,y in screenshot pixels), type_text_focused, press_keys, or wait.",
             break_loop=False,
         )

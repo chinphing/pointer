@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from python.helpers.extension import Extension
 from python.helpers import history, files, runtime
@@ -28,6 +28,8 @@ _COMPUTER_DIR = os.path.abspath(os.path.join(_THIS_DIR, "..", ".."))
 if _COMPUTER_DIR not in sys.path:
     sys.path.insert(0, _COMPUTER_DIR)
 
+import pyautogui  # noqa: E402
+import rtree  # noqa: E402
 import screen as screen_mod  # noqa: E402
 import som_util  # noqa: E402
 import os_prompts  # noqa: E402
@@ -105,6 +107,21 @@ def _pil_to_base64_jpeg(pil_img: Image.Image, quality: int = 85) -> str:
     pil_img.save(buf, format="JPEG", quality=quality)
     import base64
     return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+
+def _draw_mouse_overlay(pil_image: Image.Image, mouse_ix: int, mouse_iy: int) -> Image.Image:
+    """Draw a small circle and crosshair at mouse position on a copy of the image. Returns new image."""
+    out = pil_image.copy()
+    if out.mode != "RGB":
+        out = out.convert("RGB")
+    draw = ImageDraw.Draw(out)
+    r = 10
+    x1, y1 = mouse_ix - r, mouse_iy - r
+    x2, y2 = mouse_ix + r, mouse_iy + r
+    draw.ellipse([x1, y1, x2, y2], outline=(255, 0, 0), width=3)
+    draw.line([(mouse_ix - r - 2, mouse_iy), (mouse_ix + r + 2, mouse_iy)], fill=(255, 0, 0), width=2)
+    draw.line([(mouse_ix, mouse_iy - r - 2), (mouse_ix, mouse_iy + r + 2)], fill=(255, 0, 0), width=2)
+    return out
 
 
 SCREEN_INJECT_PREVIEW = "<screen images>"
@@ -301,11 +318,64 @@ class ComputerScreenInject(Extension):
                 x1, y1, x2, y2 = float(box[0]), float(box[1]), float(box[2]), float(box[3])
                 cx = mon_left + (x1 + x2) / 2
                 cy = mon_top + (y1 + y2) / 2
-                index_map[i + 1] = {"x": cx, "y": cy}
+                left = mon_left + x1
+                top = mon_top + y1
+                right = mon_left + x2
+                bottom = mon_top + y2
+                index_map[i + 1] = {"x": cx, "y": cy, "left": left, "top": top, "right": right, "bottom": bottom}
             self.agent.set_data("computer_vision_index_map", index_map)
         else:
             self.agent.set_data("computer_vision_index_map", {})
             err_preview = "No interactive elements detected."
+
+        # Mouse position: draw on annotated image and expose exact coords in prompt for post-action feedback
+        mouse_ix, mouse_iy = None, None
+        mouse_coords_str = "Mouse: position unavailable."
+        try:
+            mx, my = pyautogui.position()
+            mouse_ix = mx - mon_left
+            mouse_iy = my - mon_top
+            if 0 <= mouse_ix < w and 0 <= mouse_iy < h:
+                annotated_img = _draw_mouse_overlay(annotated_img, mouse_ix, mouse_iy)
+                mouse_coords_str = (
+                    f"Current mouse position (screenshot coords, origin top-left): ({int(mouse_ix)}, {int(mouse_iy)}). "
+                    "After an action, compare with the next turn mouse position to judge whether the click landed on target or deviated, and adjust strategy."
+                )
+            else:
+                mouse_coords_str = "Mouse: outside captured area."
+        except Exception:
+            pass
+
+        reference_bbox_text = ""
+        if index_map and mouse_ix is not None and mouse_iy is not None:
+            # Build rtree index: bbox in screenshot space (origin 0,0 top-left); id = index (1-based)
+            idx_rtree = rtree.index.Index()
+            im_boxes: Dict[int, Tuple[float, float, float, float]] = {}
+            for idx in index_map:
+                e = index_map[idx]
+                x1 = float(e["left"]) - mon_left
+                y1 = float(e["top"]) - mon_top
+                x2 = float(e["right"]) - mon_left
+                y2 = float(e["bottom"]) - mon_top
+                im_boxes[idx] = (x1, y1, x2, y2)
+                idx_rtree.insert(idx, (x1, y1, x2, y2))
+
+            # Use rtree nearest to get 5 elements closest to the mouse (screenshot point)
+            nearest_ids = list(idx_rtree.nearest((mouse_ix, mouse_iy, mouse_ix, mouse_iy), 5))
+            nearest_items = [(i, im_boxes[i]) for i in nearest_ids]
+
+            def _fmt(items: List[Tuple[int, Tuple[float, float, float, float]]]) -> str:
+                if not items:
+                    return "none"
+                return "; ".join(f"index {idx} (x1,y1,x2,y2)=({int(round(x1))},{int(round(y1))},{int(round(x2))},{int(round(y2))})" for idx, (x1, y1, x2, y2) in items)
+
+            reference_bbox_text = (
+                " Reference bboxes (screenshot origin top-left 0,0). 5 nearest marked elements to the mouse: "
+                f"{_fmt(nearest_items)}. "
+                "When inferring target coordinates for click_at/type_text_at: first decide whether the target is INSIDE or OUTSIDE the reference bbox. "
+                "If INSIDE: derive x, y as a point within the reference bbox (e.g. center of the bbox, or estimate from the target's position within the box—left/center/right horizontally, top/center/bottom vertically). "
+                "If OUTSIDE: consider which of the four sides it lies (above, below, left, or right of the reference element) and derive x, y accordingly. Use the screenshot width and height as the coordinate range: x in [0, image width], y in [0, image height]. Do not use normalized coordinates (e.g. 0-1 or 0-1000)."
+            )
 
         self.agent.set_data("computer_vision_coordinate_system", "pixel")
         self.agent.set_data(
@@ -353,6 +423,7 @@ class ComputerScreenInject(Extension):
                 f"Action state: {result}. "
                 "Validate: Did the previous action achieve the goal? Check screenshot for expected changes. "
                 "Only treat as success if the expected change is clearly visible. "
+                "For coordinate-based positioning (click_at, type_text_at, etc.): each step that brings the pointer closer to the target counts as success; you may try up to 3 times—no need to hit the target in one shot. "
                 "If unverified or failed: (1) retry the same action first (1–2 times), (2) then try a different method, (3) only after several attempts still fail may you conclude the goal was not achieved. "
                 "Then output your next tool call (retry, alternative, or continue if verified)."
             )
@@ -373,17 +444,13 @@ class ComputerScreenInject(Extension):
         valid_indices_text = (
             f" Valid indices: 1 to {n_total}. " if index_map else ""
         ) + (
-            "Only use these indices when the target has a number; otherwise use coordinate-based tools (e.g. click_at with x, y)." if index_map else ""
+            "Use index-based tools when the target has an index; when the target has no index use coordinate-based tools (click_at, double_click_at, right_click_at, hover_at, type_text_at) with x, y in screenshot pixels. Coordinate range: x in [0, image width], y in [0, image height]—use screenshot dimensions as range; do not use normalized coordinates (e.g. 0-1 or 0-1000). When using reference bboxes: first consider whether the target is INSIDE or OUTSIDE the reference bbox. If inside: infer x, y as a point within the bbox (e.g. bbox center or target position within the box). If outside: consider the four directions (above, below, left, right) relative to the reference element to infer x, y. For index-based delta: delta_x > 0 from right edge, < 0 from left; delta_y > 0 from bottom, < 0 from top." if index_map else ""
         )
         content = []
         env_text = _build_environment_text(w, h)
         content.append({"type": "text", "text": env_text})
         if prev_action_block:
             content.append({"type": "text", "text": prev_action_block})
-        image_size_instruction = (
-            f" Image size: {w}×{h} pixels. "
-            "For coordinate-based tools (click_at, double_click_at, right_click_at, hover_at, type_text_at), output x and y as **pixel coordinates** (integers in [0, {}) and [0, {})).".format(w, h)
-        )
         content.append({
             "type": "text",
             "text": (
@@ -393,9 +460,14 @@ class ComputerScreenInject(Extension):
                 "(3) top-area 2x zoom from the annotated screenshot for index confirmation; "
                 "(4) optional extra local 2x zooms for other regions when needed. "
                 + annotation_help
-                + image_size_instruction
-                + " Prefer index-based tools when the target has a number; if the target has no number, use coordinate-based tools (click_at, etc.) with x, y in pixels."
+                + f" Image size: {w}×{h} pixels. Origin: top-left (0,0). "
+                + "The annotated image shows the current mouse cursor (red circle/crosshair). "
+                + mouse_coords_str + " "
+                + "You can use coordinate-based tools (click_at, double_click_at, right_click_at, hover_at, type_text_at) with x, y in screenshot pixels. When reasoning coordinates: use the screenshot width and height as the range (x in [0, image width], y in [0, image height]); do not use normalized coordinates (e.g. 0-1 or 0-1000). When reasoning from reference bboxes: first decide if the target is INSIDE or OUTSIDE the reference bbox; then if outside, use the four directions (above, below, left, right) relative to the reference element to infer the target position. "
+                + "For coordinate-based positioning: each step that brings the pointer closer to the target counts as success; you may try up to 3 times—no need to hit the target in one shot. "
+                + "Use index-based tools when the target has an index. "
                 + valid_indices_text
+                + reference_bbox_text
                 + " When referring to elements, describe their position (e.g. top-left, center, bottom-right)."
             ),
         })

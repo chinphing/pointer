@@ -9,54 +9,42 @@ supports various formats HTML PDF Office Text etc
 usage:
 
 1 get content
-~~~json
-{
-    "thoughts": [
-        "I need to read..."
-    ],
-    "headline": "...",
-    "tool_name": "document_query",
-    "tool_args": {
-        "document": "https://.../document"
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>I need to read...</thoughts>
+  <headline>Reading document</headline>
+  <tool_name>document_query</tool_name>
+  <tool_args>
+    <document>https://.../document</document>
+  </tool_args>
+</response>
+```
 
 2 query document
-~~~json
-{
-    "thoughts": [
-        "I need to answer..."
-    ],
-    "headline": "...",
-    "tool_name": "document_query",
-    "tool_args": {
-        "document": "https://.../document",
-        "queries": [
-            "What is...",
-            "Who is..."
-        ]
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>I need to answer...</thoughts>
+  <headline>Querying document</headline>
+  <tool_name>document_query</tool_name>
+  <tool_args>
+    <document>https://.../document</document>
+    <queries>What is...
+Who is...</queries>
+  </tool_args>
+</response>
+```
 
 3 query multiple documents
-~~~json
-{
-    "thoughts": [
-        "I need to compare..."
-    ],
-    "headline": "...",
-    "tool_name": "document_query",
-    "tool_args": {
-        "document": [
-            "https://.../document-one",
-            "file:///path/to/document-two"
-        ],
-        "queries": [
-            "Compare the main conclusions...",
-            "What are the key differences..."
-        ]
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>I need to compare...</thoughts>
+  <headline>Comparing documents</headline>
+  <tool_name>document_query</tool_name>
+  <tool_args>
+    <document>https://.../document-one
+file:///path/to/document-two</document>
+    <queries>Compare the main conclusions...
+What are the key differences...</queries>
+  </tool_args>
+</response>
+```

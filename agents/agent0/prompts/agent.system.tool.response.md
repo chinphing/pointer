@@ -14,17 +14,15 @@ speech: text and lists are spoken, tables and code blocks not, therefore use tab
 
 
 usage:
-~~~json
-{
-    "thoughts": [
-        "...",
-    ],
-    "headline": "Explaining why...",
-    "tool_name": "response",
-    "tool_args": {
-        "text": "Answer to the user",
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>...</thoughts>
+  <headline>Explaining why...</headline>
+  <tool_name>response</tool_name>
+  <tool_args>
+    <text>Answer to the user</text>
+  </tool_args>
+</response>
+```
 
 {{ include "agent.system.response_tool_tips.md" }}

@@ -22,20 +22,18 @@ continues the same dialogue) and supports optional file attachments.
 
 #### Usage – first message
 ##### Request
-```json
-{
-  "thoughts": [
-    "I want to ask the weather-bot for today’s forecast."
-  ],
-  "headline": "Ask remote agent (weather-bot)",
-  "tool_name": "a2a_chat",
-  "tool_args": {
-    "agent_url": "http://weather.example.com:8000/a2a",
-    "message": "Hello! What’s the forecast for Berlin today?",
-    "attachments": [],
-    "reset": false
-  }
-}
+```xml
+<response>
+  <thoughts>I want to ask the weather-bot for today's forecast.</thoughts>
+  <headline>Ask remote agent (weather-bot)</headline>
+  <tool_name>a2a_chat</tool_name>
+  <tool_args>
+    <agent_url>http://weather.example.com:8000/a2a</agent_url>
+    <message>Hello! What's the forecast for Berlin today?</message>
+    <attachments></attachments>
+    <reset>false</reset>
+  </tool_args>
+</response>
 ```
 ##### Response (assistant-side)
 ```plaintext
@@ -44,20 +42,18 @@ continues the same dialogue) and supports optional file attachments.
 
 #### Usage – follow-up (context automatically preserved)
 ##### Request
-```json
-{
-  "thoughts": [
-    "Need tomorrow’s forecast too."
-  ],
-  "headline": "Follow-up question",
-  "tool_name": "a2a_chat",
-  "tool_args": {
-    "agent_url": "http://weather.example.com:8000/a2a",
-    "message": "And tomorrow?",
-    "attachments": [],
-    "reset": false
-  }
-}
+```xml
+<response>
+  <thoughts>Need tomorrow's forecast too.</thoughts>
+  <headline>Follow-up question</headline>
+  <tool_name>a2a_chat</tool_name>
+  <tool_args>
+    <agent_url>http://weather.example.com:8000/a2a</agent_url>
+    <message>And tomorrow?</message>
+    <attachments></attachments>
+    <reset>false</reset>
+  </tool_args>
+</response>
 ```
 ##### Response
 ```plaintext

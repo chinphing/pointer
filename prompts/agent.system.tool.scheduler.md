@@ -45,21 +45,18 @@ All runnable tasks can be listed and filtered here. The arguments are filter fie
 * next_run_after: int (Optional) - The next run of the task must be after not less than this many minutes
 
 ##### Usage:
-~~~json
-{
-    "thoughts": [
-        "I must look for planned runnable tasks with name ... and state idle or error",
-        "The tasks should run within next 20 minutes"
-    ],
-    "headline": "Searching for planned runnable tasks to execute soon",
-    "tool_name": "scheduler:list_tasks",
-    "tool_args": {
-        "state": ["idle", "error"],
-        "type": ["planned"],
-        "next_run_within": 20
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>I must look for planned runnable tasks with name ... and state idle or error. The tasks should run within next 20 minutes.</thoughts>
+  <headline>Searching for planned runnable tasks to execute soon</headline>
+  <tool_name>scheduler:list_tasks</tool_name>
+  <tool_args>
+    <state>idle, error</state>
+    <type>planned</type>
+    <next_run_within>20</next_run_within>
+  </tool_args>
+</response>
+```
 
 
 #### scheduler:find_task_by_name
@@ -69,18 +66,16 @@ List all tasks whose name is matching partially or fully the provided name param
 * name: str - The task name to look for
 
 ##### Usage:
-~~~json
-{
-    "thoughts": [
-        "I must look for tasks with name XYZ"
-    ],
-    "headline": "Finding tasks by name XYZ",
-    "tool_name": "scheduler:find_task_by_name",
-    "tool_args": {
-        "name": "XYZ"
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>I must look for tasks with name XYZ.</thoughts>
+  <headline>Finding tasks by name XYZ</headline>
+  <tool_name>scheduler:find_task_by_name</tool_name>
+  <tool_args>
+    <name>XYZ</name>
+  </tool_args>
+</response>
+```
 
 
 #### scheduler:show_task
@@ -90,18 +85,16 @@ Show task details for scheduler task with the given uuid.
 * uuid: string - The uuid of the task to display
 
 ##### Usage (execute task with uuid "xyz-123"):
-~~~json
-{
-    "thoughts": [
-        "I need details of task xxx-yyy-zzz",
-    ],
-    "headline": "Retrieving task details and configuration",
-    "tool_name": "scheduler:show_task",
-    "tool_args": {
-        "uuid": "xxx-yyy-zzz",
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>I need details of task xxx-yyy-zzz.</thoughts>
+  <headline>Retrieving task details and configuration</headline>
+  <tool_name>scheduler:show_task</tool_name>
+  <tool_args>
+    <uuid>xxx-yyy-zzz</uuid>
+  </tool_args>
+</response>
+```
 
 
 #### scheduler:run_task
@@ -116,19 +109,17 @@ You can pass input data in text form as the "context" argument. The context will
 * context: (Optional) string - The context that will be prepended to the actual task prompt as contextual information.
 
 ##### Usage (execute task with uuid "xyz-123"):
-~~~json
-{
-    "thoughts": [
-        "I must run task xyz-123",
-    ],
-    "headline": "Manually executing scheduled task",
-    "tool_name": "scheduler:run_task",
-    "tool_args": {
-        "uuid": "xyz-123",
-        "context": "This text is useful to execute the task more precisely"
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>I must run task xyz-123.</thoughts>
+  <headline>Manually executing scheduled task</headline>
+  <tool_name>scheduler:run_task</tool_name>
+  <tool_args>
+    <uuid>xyz-123</uuid>
+    <context>This text is useful to execute the task more precisely</context>
+  </tool_args>
+</response>
+```
 
 
 #### scheduler:delete_task
@@ -138,18 +129,16 @@ Delete the task defined by the given uuid from the system.
 * uuid: string - The uuid of the task to run. Can be retrieved for example from "scheduler:tasks_list"
 
 ##### Usage (execute task with uuid "xyz-123"):
-~~~json
-{
-    "thoughts": [
-        "I must delete task xyz-123",
-    ],
-    "headline": "Removing task from scheduler",
-    "tool_name": "scheduler:delete_task",
-    "tool_args": {
-        "uuid": "xyz-123",
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>I must delete task xyz-123.</thoughts>
+  <headline>Removing task from scheduler</headline>
+  <tool_name>scheduler:delete_task</tool_name>
+  <tool_args>
+    <uuid>xyz-123</uuid>
+  </tool_args>
+</response>
+```
 
 
 #### scheduler:create_scheduled_task
@@ -165,29 +154,25 @@ The scheduled type of tasks is being run by a cron schedule that you must provid
 * dedicated_context: bool - if false, then the task will run in the context it was created in. If true, the task will have it's own context. If unspecified then false is assumed. The tasks run in the context they were created in by default.
 
 ##### Usage:
-~~~json
-{
-    "thoughts": [
-        "I need to create a scheduled task that runs every 20 minutes in a separate chat"
-    ],
-    "headline": "Creating recurring cron-scheduled email task",
-    "tool_name": "scheduler:create_scheduled_task",
-    "tool_args": {
-        "name": "XXX",
-        "system_prompt": "You are a software developer",
-        "prompt": "Send the user an email with a greeting using python and smtp. The user's address is: xxx@yyy.zzz",
-        "attachments": [],
-        "schedule": {
-            "minute": "*/20",
-            "hour": "*",
-            "day": "*",
-            "month": "*",
-            "weekday": "*",
-        },
-        "dedicated_context": true
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>I need to create a scheduled task that runs every 20 minutes in a separate chat.</thoughts>
+  <headline>Creating recurring cron-scheduled email task</headline>
+  <tool_name>scheduler:create_scheduled_task</tool_name>
+  <tool_args>
+    <name>XXX</name>
+    <system_prompt>You are a software developer</system_prompt>
+    <prompt>Send the user an email with a greeting using python and smtp. The user's address is: xxx@yyy.zzz</prompt>
+    <attachments></attachments>
+    <minute>*/20</minute>
+    <hour>*</hour>
+    <day>*</day>
+    <month>*</month>
+    <weekday>*</weekday>
+    <dedicated_context>true</dedicated_context>
+  </tool_args>
+</response>
+```
 
 
 #### scheduler:create_adhoc_task
@@ -202,22 +187,20 @@ The adhoc type of tasks is being run manually by "scheduler:run_task" tool or by
 * dedicated_context: bool - if false, then the task will run in the context it was created in. If true, the task will have it's own context. If unspecified then false is assumed. The tasks run in the context they were created in by default.
 
 ##### Usage:
-~~~json
-{
-    "thoughts": [
-        "I need to create an adhoc task that can be run manually when needed"
-    ],
-    "headline": "Creating on-demand email task",
-    "tool_name": "scheduler:create_adhoc_task",
-    "tool_args": {
-        "name": "XXX",
-        "system_prompt": "You are a software developer",
-        "prompt": "Send the user an email with a greeting using python and smtp. The user's address is: xxx@yyy.zzz",
-        "attachments": [],
-        "dedicated_context": false
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>I need to create an adhoc task that can be run manually when needed.</thoughts>
+  <headline>Creating on-demand email task</headline>
+  <tool_name>scheduler:create_adhoc_task</tool_name>
+  <tool_args>
+    <name>XXX</name>
+    <system_prompt>You are a software developer</system_prompt>
+    <prompt>Send the user an email with a greeting using python and smtp. The user's address is: xxx@yyy.zzz</prompt>
+    <attachments></attachments>
+    <dedicated_context>false</dedicated_context>
+  </tool_args>
+</response>
+```
 
 
 #### scheduler:create_planned_task
@@ -233,24 +216,21 @@ The planned type of tasks is being run by a fixed plan, a list of datetimes that
 * dedicated_context: bool - if false, then the task will run in the context it was created in. If true, the task will have it's own context. If unspecified then false is assumed. The tasks run in the context they were created in by default.
 
 ##### Usage:
-~~~json
-{
-    "thoughts": [
-        "I need to create a planned task to run tomorrow at 6:25 PM",
-        "Today is 2025-04-29 according to system prompt"
-    ],
-    "headline": "Creating planned task for specific datetime",
-    "tool_name": "scheduler:create_planned_task",
-    "tool_args": {
-        "name": "XXX",
-        "system_prompt": "You are a software developer",
-        "prompt": "Send the user an email with a greeting using python and smtp. The user's address is: xxx@yyy.zzz",
-        "attachments": [],
-        "plan": ["2025-04-29T18:25:00"],
-        "dedicated_context": false
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>I need to create a planned task to run tomorrow at 6:25 PM. Today is 2025-04-29 according to system prompt.</thoughts>
+  <headline>Creating planned task for specific datetime</headline>
+  <tool_name>scheduler:create_planned_task</tool_name>
+  <tool_args>
+    <name>XXX</name>
+    <system_prompt>You are a software developer</system_prompt>
+    <prompt>Send the user an email with a greeting using python and smtp. The user's address is: xxx@yyy.zzz</prompt>
+    <attachments></attachments>
+    <plan>2025-04-29T18:25:00</plan>
+    <dedicated_context>false</dedicated_context>
+  </tool_args>
+</response>
+```
 
 
 #### scheduler:wait_for_task
@@ -261,15 +241,13 @@ Attention: You can only wait for tasks running in a different chat context (dedi
 * uuid: string - The uuid of the task to wait for. Can be retrieved for example from "scheduler:tasks_list"
 
 ##### Usage (wait for task with uuid "xyz-123"):
-~~~json
-{
-    "thoughts": [
-        "I need the most current result of the task xyz-123",
-    ],
-    "headline": "Waiting for task completion and results",
-    "tool_name": "scheduler:wait_for_task",
-    "tool_args": {
-        "uuid": "xyz-123",
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>I need the most current result of the task xyz-123.</thoughts>
+  <headline>Waiting for task completion and results</headline>
+  <tool_name>scheduler:wait_for_task</tool_name>
+  <tool_args>
+    <uuid>xyz-123</uuid>
+  </tool_args>
+</response>
+```

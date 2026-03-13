@@ -61,6 +61,7 @@ In thoughts, briefly state:
 - Close temporary UI artifacts as soon as they are no longer needed.
 - Prefer shortcuts: close tab/window with OS shortcut; close dialogs with Escape when applicable.
 - Before `response`, ensure extra popups/tabs/windows opened by this run are closed.
+- Ensure the taget UI artifacts are activated before cleanup, if not, activated them first.
 
 ### 8) Safety
 

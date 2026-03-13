@@ -7,15 +7,13 @@ multiple images if needed
 only bitmaps supported convert first if needed
 
 **Example usage**:
-```json
-{
-    "thoughts": [
-        "I need to see the image...",
-    ],
-    "headline": "Loading image for visual analysis",
-    "tool_name": "vision_load",
-    "tool_args": {
-        "paths": ["/path/to/image.png"],
-    }
-}
+```xml
+<response>
+  <thoughts>I need to see the image...</thoughts>
+  <headline>Loading image for visual analysis</headline>
+  <tool_name>vision_load</tool_name>
+  <tool_args>
+    <paths>/path/to/image.png</paths>
+  </tool_args>
+</response>
 ```

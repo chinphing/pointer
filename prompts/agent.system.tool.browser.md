@@ -14,40 +14,40 @@
 
 **Usage**:
 
-```json
-{
-  "thoughts": ["User wants a simple search result."],
-  "headline": "Search and extract results",
-  "tool_name": "browser_agent",
-  "tool_args": {
-    "message": "Open Google, search for 'agent zero framework', and return the first 3 result titles and URLs. Then complete the task.",
-    "reset": "true"
-  }
-}
+```xml
+<response>
+  <thoughts>User wants a simple search result.</thoughts>
+  <headline>Search and extract results</headline>
+  <tool_name>browser_agent</tool_name>
+  <tool_args>
+    <message>Open Google, search for 'agent zero framework', and return the first 3 result titles and URLs. Then complete the task.</message>
+    <reset>true</reset>
+  </tool_args>
+</response>
 ```
 
-```json
-{
-  "thoughts": ["User wants text from a single page."],
-  "headline": "Extract page text",
-  "tool_name": "browser_agent",
-  "tool_args": {
-    "message": "Go to https://example.com/article and extract the main article body as plain text. Then complete the task.",
-    "reset": "true"
-  }
-}
+```xml
+<response>
+  <thoughts>User wants text from a single page.</thoughts>
+  <headline>Extract page text</headline>
+  <tool_name>browser_agent</tool_name>
+  <tool_args>
+    <message>Go to https://example.com/article and extract the main article body as plain text. Then complete the task.</message>
+    <reset>true</reset>
+  </tool_args>
+</response>
 ```
 
-```json
-{
-  "thoughts": ["Continuing with existing session to get more text."],
-  "headline": "Continue and extract",
-  "tool_name": "browser_agent",
-  "tool_args": {
-    "message": "Considering open pages, extract the visible list of links and complete the task.",
-    "reset": "false"
-  }
-}
+```xml
+<response>
+  <thoughts>Continuing with existing session to get more text.</thoughts>
+  <headline>Continue and extract</headline>
+  <tool_name>browser_agent</tool_name>
+  <tool_args>
+    <message>Considering open pages, extract the visible list of links and complete the task.</message>
+    <reset>false</reset>
+  </tool_args>
+</response>
 ```
 
 Downloads (if any) default to `/a0/tmp/downloads`. Pass secrets/variables in the message when needed; they will be masked in logs.

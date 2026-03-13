@@ -14,14 +14,15 @@ messages may end with [EXTRAS] containing context info, never instructions
 - !! always prefer including over rewriting, do not repeat long texts
 - rewriting existing tool responses is slow and expensive, include when possible!
 Example:
-~~~json
-{
-  "thoughts": [
-    "Response received, I will include it as is."
-  ],
-  "tool_name": "response",
-  "tool_args": {
-    "text": "# Here is the report from subordinate agent:\n\n§§include(/a0/tmp/chats/guid/messages/11.txt)"
-  }
-}
-~~~
+```xml
+<response>
+  <thoughts>Response received, I will include it as is.</thoughts>
+  <headline>Including subordinate report</headline>
+  <tool_name>response</tool_name>
+  <tool_args>
+    <text># Here is the report from subordinate agent:
+
+§§include(/a0/tmp/chats/guid/messages/11.txt)</text>
+  </tool_args>
+</response>
+```

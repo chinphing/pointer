@@ -13,20 +13,18 @@ respond to existing subordinates using call_subordinate tool with reset false
 profile arg usage: select from available profiles for specialized subordinates, leave empty for default
 
 example usage
-~~~json
-{
-    "thoughts": [
-        "The result seems to be ok but...",
-        "I will ask a coder subordinate to fix...",
-    ],
-    "tool_name": "call_subordinate",
-    "tool_args": {
-        "profile": "",
-        "message": "...",
-        "reset": "true"
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>The result seems ok but I will ask a coder subordinate to fix...</thoughts>
+  <headline>Delegating to subordinate</headline>
+  <tool_name>call_subordinate</tool_name>
+  <tool_args>
+    <profile></profile>
+    <message>...</message>
+    <reset>true</reset>
+  </tool_args>
+</response>
+```
 
 **response handling**
 - you might be part of long chain of subordinates, avoid slow and expensive rewriting subordinate responses, instead use `§§include(<path>)` alias to include the response as is

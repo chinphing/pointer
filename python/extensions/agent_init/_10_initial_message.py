@@ -1,6 +1,8 @@
 import json
+import re
 from agent import LoopData
 from python.helpers.extension import Extension
+from python.helpers import extract_tools
 
 
 class InitialMessage(Extension):
@@ -28,9 +30,25 @@ class InitialMessage(Extension):
         # Add the message to history as an AI response
         self.agent.hist_add_ai_response(initial_message)
 
-        # json parse the message, get the tool_args text
-        initial_message_json = json.loads(initial_message)
-        initial_message_text = initial_message_json.get("tool_args", {}).get("text", "Hello! How can I help you?")
+        # Parse message (XML or JSON) to get tool_args.text for the log
+        initial_message_text = "Hello! How can I help you?"
+        stripped = initial_message.strip()
+        if stripped.startswith("```"):
+            stripped = re.sub(r"^```\w*\n?", "", stripped)
+            stripped = re.sub(r"\n?```\s*$", "", stripped)
+        try:
+            parsed = extract_tools.xml_parse_dirty(stripped)
+            if parsed and isinstance(parsed.get("tool_args"), dict):
+                initial_message_text = parsed["tool_args"].get("text") or initial_message_text
+            else:
+                raise ValueError("XML parse returned no tool_args")
+        except (ValueError, TypeError):
+            try:
+                parsed = json.loads(stripped)
+                if isinstance(parsed.get("tool_args"), dict):
+                    initial_message_text = parsed["tool_args"].get("text") or initial_message_text
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
 
         # Add to log (green bubble) for immediate UI display
         self.agent.context.log.log(

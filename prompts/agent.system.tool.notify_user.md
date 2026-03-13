@@ -12,32 +12,30 @@ This tool can be used to notify the user of a message independent of the current
 
 #### Usage examples:
 ##### 1: Success notification
-```json
-{
-    "thoughts": [
-        "...",
-    ],
-    "tool_name": "notify_user",
-    "tool_args": {
-        "message": "Important notification: task xyz is completed succesfully",
-        "title": "Task Completed",
-        "detail": "This is a test notification detail with <a href='https://www.google.com'>link</a>",
-        "type": "success"
-    }
-}
+```xml
+<response>
+  <thoughts>Notifying user of task completion.</thoughts>
+  <headline>Task completed</headline>
+  <tool_name>notify_user</tool_name>
+  <tool_args>
+    <message>Important notification: task xyz is completed successfully</message>
+    <title>Task Completed</title>
+    <detail>This is a test notification detail with &lt;a href='https://www.google.com'&gt;link&lt;/a&gt;</detail>
+    <type>success</type>
+  </tool_args>
+</response>
 ```
 ##### 2: Error notification
-```json
-{
-    "thoughts": [
-        "...",
-    ],
-    "tool_name": "notify_user",
-    "tool_args": {
-        "message": "Important notification: task xyz is failed",
-        "title": "Task Failed",
-        "detail": "This is a test notification detail with <a href='https://www.google.com'>link</a> and <img src='https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png'>",
-        "type": "error"
-    }
-}
+```xml
+<response>
+  <thoughts>Notifying user of task failure.</thoughts>
+  <headline>Task failed</headline>
+  <tool_name>notify_user</tool_name>
+  <tool_args>
+    <message>Important notification: task xyz has failed</message>
+    <title>Task Failed</title>
+    <detail>This is a test notification detail with link and image.</detail>
+    <type>error</type>
+  </tool_args>
+</response>
 ```

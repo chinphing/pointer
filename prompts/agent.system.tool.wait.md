@@ -5,30 +5,26 @@ use "until" with ISO timestamp for a specific time
 usage:
 
 1 wait duration
-~~~json
-{
-    "thoughts": [
-        "I need to wait..."
-    ],
-    "headline": "...",
-    "tool_name": "wait",
-    "tool_args": { 
-        "minutes": 1, 
-        "seconds": 30 
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>I need to wait...</thoughts>
+  <headline>Waiting for duration</headline>
+  <tool_name>wait</tool_name>
+  <tool_args>
+    <minutes>1</minutes>
+    <seconds>30</seconds>
+  </tool_args>
+</response>
+```
 
 2 wait timestamp
-~~~json
-{
-    "thoughts": [
-        "I will wait until..."
-    ],
-    "headline": "...",
-    "tool_name": "wait",
-    "tool_args": { 
-        "until": "2025-10-20T10:00:00Z" 
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>I will wait until...</thoughts>
+  <headline>Waiting until timestamp</headline>
+  <tool_name>wait</tool_name>
+  <tool_args>
+    <until>2025-10-20T10:00:00Z</until>
+  </tool_args>
+</response>
+```

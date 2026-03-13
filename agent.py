@@ -997,7 +997,8 @@ class Agent:
             try:
                 classes = extract_tools.load_classes_from_file(path, Tool)  # type: ignore[arg-type]
                 break
-            except Exception:
+            except Exception as ex:
+                PrintStyle(font_color="red", padding=True).print(f"Failed to load tool '{name}': {ex}")
                 continue
 
         tool_class = classes[0] if classes else Unknown

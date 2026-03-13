@@ -17,74 +17,60 @@ usage:
 
 
 1 execute terminal command
-~~~json
-{
-    "thoughts": [
-        "Need to do...",
-        "Need to install...",
-    ],
-    "headline": "Installing zip package via terminal",
-    "tool_name": "code_execution_tool",
-    "tool_args": {
-        "runtime": "terminal",
-        "session": 0,
-        "reset": false,
-        "code": "apt-get install zip",
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>Need to do... Need to install...</thoughts>
+  <headline>Installing zip package via terminal</headline>
+  <tool_name>code_execution_tool</tool_name>
+  <tool_args>
+    <runtime>terminal</runtime>
+    <session>0</session>
+    <reset>false</reset>
+    <code>apt-get install zip</code>
+  </tool_args>
+</response>
+```
 
 2 execute python code
-
-~~~json
-{
-    "thoughts": [
-        "Need to do...",
-        "I can use...",
-        "Then I can...",
-    ],
-    "headline": "Executing Python code to check current directory",
-    "tool_name": "code_execution_tool",
-    "tool_args": {
-        "runtime": "python",
-        "session": 0,
-        "reset": false,
-        "code": "import os\nprint(os.getcwd())",
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>Need to do... I can use... Then I can...</thoughts>
+  <headline>Executing Python code to check current directory</headline>
+  <tool_name>code_execution_tool</tool_name>
+  <tool_args>
+    <runtime>python</runtime>
+    <session>0</session>
+    <reset>false</reset>
+    <code>import os
+print(os.getcwd())</code>
+  </tool_args>
+</response>
+```
 
 3 execute nodejs code
-
-~~~json
-{
-    "thoughts": [
-        "Need to do...",
-        "I can use...",
-        "Then I can...",
-    ],
-    "headline": "Executing Javascript code to check current directory",
-    "tool_name": "code_execution_tool",
-    "tool_args": {
-        "runtime": "nodejs",
-        "session": 0,
-        "reset": false,
-        "code": "console.log(process.cwd());",
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>Need to do... I can use... Then I can...</thoughts>
+  <headline>Executing Javascript code to check current directory</headline>
+  <tool_name>code_execution_tool</tool_name>
+  <tool_args>
+    <runtime>nodejs</runtime>
+    <session>0</session>
+    <reset>false</reset>
+    <code>console.log(process.cwd());</code>
+  </tool_args>
+</response>
+```
 
 4 wait for output with long-running scripts
-~~~json
-{
-    "thoughts": [
-        "Waiting for program to finish...",
-    ],
-    "headline": "Waiting for long-running program to complete",
-    "tool_name": "code_execution_tool",
-    "tool_args": {
-        "runtime": "output",
-        "session": 0,
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>Waiting for program to finish...</thoughts>
+  <headline>Waiting for long-running program to complete</headline>
+  <tool_name>code_execution_tool</tool_name>
+  <tool_args>
+    <runtime>output</runtime>
+    <session>0</session>
+  </tool_args>
+</response>
+```

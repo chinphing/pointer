@@ -16,4 +16,6 @@ class ResponseTool(Tool):
 
         if self.loop_data and "log_item_response" in self.loop_data.params_temporary:
             log = self.loop_data.params_temporary["log_item_response"]
-            log.update(finished=True) # mark the message as finished
+        else:
+            self.log = self.agent.context.log.log(type="response", heading=f"{self.agent.agent_name}", content=self.args.get("text", ""))
+        log.update(finished=True) # mark the message as finished

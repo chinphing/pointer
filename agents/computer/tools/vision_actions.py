@@ -4,6 +4,7 @@ Dispatches click_index / double_click_index / type_text_at_index using index_map
 """
 from __future__ import annotations
 
+import json
 import os
 import platform
 import sys
@@ -132,7 +133,10 @@ class VisionActionsTool(Tool):
                     break_loop=False,
                 )
             if isinstance(keys, str):
-                keys = [k.strip() for k in keys.split(",")]
+                if keys.startswith("[") and keys.endswith("]"):
+                    keys = json.loads(keys)
+                else:
+                    keys = [k.strip() for k in keys.split(",")]
             else:
                 keys = list(keys)
             try:

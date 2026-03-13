@@ -18,15 +18,14 @@ agentskills.io standard
 list all skills with metadata name version description tags author
 only use when details needed
 
-~~~json
-{
-    "thoughts": [
-        "Need find skills of certain properties...",
-    ],
-    "headline": "Listing all available skills",
-    "tool_name": "skills_tool:list",
-}
-~~~
+```xml
+<response>
+  <thoughts>Need to find skills with certain properties.</thoughts>
+  <headline>Listing all available skills</headline>
+  <tool_name>skills_tool:list</tool_name>
+  <tool_args></tool_args>
+</response>
+```
 
 ##### skills_tool:load
 
@@ -35,20 +34,16 @@ returns metadata content file tree
 use when potential skill identified and want usage instructions
 use again when no longer in history
 
-~~~json
-{
-    "thoughts": [
-        "User needs PDF form extraction",
-        "pdf_editing skill will provide procedures",
-        "Loading full skill content"
-    ],
-    "headline": "Loading PDF editing skill",
-    "tool_name": "skills_tool:load",
-    "tool_args": {
-        "skill_name": "pdf_editing"
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>User needs PDF form extraction; pdf_editing skill will provide procedures. Loading full skill content.</thoughts>
+  <headline>Loading PDF editing skill</headline>
+  <tool_name>skills_tool:load</tool_name>
+  <tool_args>
+    <skill_name>pdf_editing</skill_name>
+  </tool_args>
+</response>
+```
 
 ##### executing skill scripts
 
@@ -57,21 +52,17 @@ use code_execution_tool runtime terminal to execute
 write command and parameters as instructed
 use full paths or cd to skill directory
 
-~~~json
-{
-    "thoughts": [
-        "Need to convert PDF to images",
-        "Skill provides convert_pdf_to_images.py at scripts/convert_pdf_to_images.py",
-        "Using code_execution_tool to run it directly"
-    ],
-    "headline": "Converting PDF to images",
-    "tool_name": "code_execution_tool",
-    "tool_args": {
-        "runtime": "terminal",
-        "code": "python /path/to/skill/scripts/convert_pdf_to_images.py /path/to/document.pdf /tmp/images"
-    }
-}
-~~~
+```xml
+<response>
+  <thoughts>Need to convert PDF to images. Skill provides convert_pdf_to_images.py; using code_execution_tool to run it.</thoughts>
+  <headline>Converting PDF to images</headline>
+  <tool_name>code_execution_tool</tool_name>
+  <tool_args>
+    <runtime>terminal</runtime>
+    <code>python /path/to/skill/scripts/convert_pdf_to_images.py /path/to/document.pdf /tmp/images</code>
+  </tool_args>
+</response>
+```
 
 #### skills guide
 use skills when relevant for task

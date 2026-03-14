@@ -24,7 +24,7 @@
 2. **截图**：使用本目录下 `screen.py` 的 `screenshot_current_monitor()` 获取当前光标所在显示器的截图及 bbox。
 3. **标注与序号**：使用 `som_util.py` 的 `BoxAnnotator` 做元素检测，`sort_boxes_lrtb` 按从左到右、从上到下排序后标注序号；序号标签优先在 bbox 正上方居中，空间不足时在正下方居中。
 4. **可选象限放大**：将标注图按 2×2 分为左上、右上、右下、左下四块；若用户或上一轮回复中出现方位词（如「左上」「top_left」等），则把对应象限裁剪并 2 倍放大后一并作为输入。
-5. **工具**：`tools/vision_actions.py` 中的 `VisionActionsTool` 提供基于序号的 `vision_actions:click_index`、`vision_actions:double_click_index`、`vision_actions:type_text_at_index` 等，以及基于坐标的 `vision_actions:click_at`、`vision_actions:type_text_at`（x, y, text）等。优先用序号；若目标元素无序号，则用坐标（模型输出归一化坐标，由 `coord_convert.py` 按配置的坐标系还原为屏幕像素）。**阅读与数据**：在每次滚动前用 **extract_data:extract**（instruction + task_index）将当前可见内容追加到任务临时文件；当某子任务的全部片段提取完毕，调用 **task_done:done**（task_index）由 LLM 汇总并保存为正式文件。
+5. **工具**：`tools/vision_actions.py` 中的 `VisionActionsTool` 提供基于序号的 `vision_actions:click_index`、`vision_actions:double_click_index`、`vision_actions:type_text_at_index` 等，以及基于坐标的 `vision_actions:click_at`、`vision_actions:type_text_at`（x, y, text）等。优先用序号；若目标元素无序号，则用坐标（模型输出归一化坐标，由 `coord_convert.py` 按配置的坐标系还原为屏幕像素）。**阅读与数据**：在每次滚动前用 **extract_data:extract**（instruction + task_index）将当前可见内容追加到任务临时文件；当某子任务的全部片段提取完毕，调用 **task_done**（task_index）；有碎片时会自动合并并保存为正式文件。
 
 ## 架构与数据流
 

@@ -1,45 +1,32 @@
 """
-Task-done tool for Computer Agent:
-- merge: when a subtask is complete, read its extract_data temp file, merge via LLM, save as formal file
-- read: read all saved task_done files, return to model, and clean up the directory
+Task-done tool for Computer Agent.
+Uses TaskDataMemory for merge and full load.
+- Default (task_index): Mark a subtask complete; memory merges fragments for that task and saves.
+- read: Load all saved task results via memory (then cleanup); call once at the end before response.
 """
 from __future__ import annotations
 
-import glob
-import os
-import sys
+import os, sys
 from typing import Any
 
 from agent import Agent
-from python.helpers import files
 from python.helpers.tool import Tool, Response
-
-from langchain_core.messages import HumanMessage, SystemMessage
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _COMPUTER_DIR = os.path.abspath(os.path.join(_THIS_DIR, ".."))
 if _COMPUTER_DIR not in sys.path:
     sys.path.insert(0, _COMPUTER_DIR)
+from task_data_memory import TaskDataMemory
+
+SAVED_TASK_LIST_KEY = "computer_saved_task_indices"
 
 
-def _get_extract_data_dir(agent: Agent) -> str:
-    base = files.get_abs_path("agents", "computer", "extract_data")
-    context_id = getattr(agent.context, "id", None) or "default"
-    return os.path.join(base, context_id)
-
-
-def _get_task_extracts_path(agent: Agent, task_index: int) -> str:
-    return os.path.join(_get_extract_data_dir(agent), f"task_{task_index}_extracts.md")
-
-
-def _get_task_done_dir(agent: Agent) -> str:
-    base = files.get_abs_path("agents", "computer", "task_done")
-    context_id = getattr(agent.context, "id", None) or "default"
-    return os.path.join(base, context_id)
-
-
-def _get_task_done_path(agent: Agent, task_index: int) -> str:
-    return os.path.join(_get_task_done_dir(agent), f"task_{task_index}.md")
+def _saved_summary_line(task_index: int, merged_content: str, max_chars: int = 80) -> str:
+    """One line for saved-data summary: Task N: saved … data; to use it, call extract_data:load with task_index=N."""
+    brief = (merged_content or "").strip().replace("\n", " ")[:max_chars]
+    if len((merged_content or "").strip()) > max_chars:
+        brief = brief.rstrip() + "…"
+    return f"Task {task_index}: saved {brief or '(empty)'} data. To use it, call extract_data:load with task_index={task_index}."
 
 
 class TaskDoneTool(Tool):
@@ -51,156 +38,66 @@ class TaskDoneTool(Tool):
             if v is not None:
                 args[k] = v
 
-        method = getattr(self, "method", None)
+        method = (getattr(self, "method", None) or "").strip().lower()
 
-        if method == "merge":
-            return await self._execute_merge(args)
-        elif method == "read":
+        if method == "read":
             return await self._execute_read(args)
-        else:
-            return Response(
-                message=f"task_done supports methods 'merge' (for completing a subtask) or 'read' (for loading all results), got '{method}'.",
-                break_loop=False,
-            )
-
-    async def _execute_merge(self, args: dict) -> Response:
-        """Merge: merge extracts for a single task and save to file."""
+        # Default: complete task (task_index required). Auto-merge if fragments exist.
         task_index_arg = args.get("task_index")
-        if task_index_arg is None:
-            return Response(
-                message="task_done:merge requires 'task_index' (the subtask index whose extractions to merge).",
-                break_loop=False,
-            )
+        if task_index_arg is not None:
+            return await self._execute_complete_task(args)
+        return Response(
+            message="task_done requires either 'task_index' (to mark a task complete; fragments are auto-merged) or method 'read' (no args) to load all saved results.",
+            break_loop=False,
+        )
+
+    async def _execute_complete_task(self, args: dict) -> Response:
+        """Mark task complete. Memory merges fragments for this task_index if they exist."""
         try:
-            task_index = int(task_index_arg)
+            task_index = int(args.get("task_index"))
         except (TypeError, ValueError):
             return Response(
                 message="task_index must be an integer.",
                 break_loop=False,
             )
-
-        extracts_path = _get_task_extracts_path(self.agent, task_index)
-        if not os.path.isfile(extracts_path):
+        memory = TaskDataMemory(self.agent)
+        merged_path, merged_content = await memory.merge_task(task_index)
+        if merged_path and merged_content:
+            summary_line = _saved_summary_line(task_index, merged_content)
+            saved_list: list = list(self.agent.get_data(SAVED_TASK_LIST_KEY) or [])
+            if task_index not in saved_list:
+                saved_list.append(task_index)
+                saved_list.sort()
+                self.agent.set_data(SAVED_TASK_LIST_KEY, saved_list)
+            list_hint = f" Saved tasks (available for extract_data:load): {saved_list}." if saved_list else ""
             return Response(
-                message=f"No extracts file found for task {task_index} at {extracts_path}. Run extract_data first.",
+                message=(
+                    f"Task {task_index} completed. Extracts were merged and saved.\n\n"
+                    f"**Saved data summary:**\n{summary_line}\n\n"
+                    f"Continue with next subtask or call task_done:read when all tasks are done.{list_hint}"
+                ),
                 break_loop=False,
             )
-
-        with open(extracts_path, "r", encoding="utf-8") as f:
-            raw_content = f.read()
-        if not raw_content.strip():
-            return Response(
-                message=f"Extracts file for task {task_index} is empty.",
-                break_loop=False,
-            )
-
-        system = (
-            "You are a document merging assistant. You receive a file that contains multiple extraction segments "
-            "(each with a Target and Content in markdown). Merge them into one coherent markdown document. "
-            "Preserve structure: headings, paragraphs, lists, tables. Remove duplicate or overlapping parts. "
-            "Output only the merged markdown, no commentary or JSON wrapper."
-        )
-        user_content = f"Merge these extraction segments into one coherent markdown document:\n\n{raw_content}"
-        try:
-            response, _ = await self.agent.call_chat_model(
-                messages=[
-                    SystemMessage(content=system),
-                    HumanMessage(content=user_content),
-                ],
-                explicit_caching=False,
-            )
-        except Exception as e:
-            return Response(message=f"Merge call failed: {e}", break_loop=False)
-
-        if not response or not str(response).strip():
-            return Response(message="Merge returned no content.", break_loop=False)
-
-        raw = str(response).strip()
-        merged = raw
-        if raw.startswith("{") and ("content" in raw or "text" in raw):
-            try:
-                import json
-                d = json.loads(raw)
-                merged = d.get("content") or d.get("text") or raw
-            except Exception:
-                pass
-        merged = str(merged).strip() or raw
-        out_path = _get_task_done_path(self.agent, task_index)
-        os.makedirs(os.path.dirname(out_path), exist_ok=True)
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write(merged)
-
         return Response(
-            message=f"Task {task_index} completed and merged. Continue with next subtask or call task_done:read to load all results for further usage.",
+            message=(
+                f"Task {task_index} marked complete. No extract fragments were found for this task (nothing to merge). "
+                "Note in plans that this task had no data; continue with next subtask or task_done:read when all are done. "
+                "Continue with next subtask or call task_done:read when all tasks are done."
+            ),
             break_loop=False,
         )
 
     async def _execute_read(self, args: dict) -> Response:
-        """Read: load all saved task results and clean up the directory."""
-        task_done_dir = _get_task_done_dir(self.agent)
-
-        if not os.path.isdir(task_done_dir):
+        """Read: load all saved task results via memory (cleanup done inside memory). Call once at the end before response."""
+        memory = TaskDataMemory(self.agent)
+        aggregated, success = await memory.load_all_tasks()
+        self.agent.set_data(SAVED_TASK_LIST_KEY, [])
+        if not success:
             return Response(
-                message="No task_done directory found. No saved results to load.",
+                message="No saved task results found. Complete tasks with task_done first, then call task_done:read when all are done.",
                 break_loop=False,
             )
-
-        # Find all task files
-        task_files = sorted(glob.glob(os.path.join(task_done_dir, "task_*.md")))
-
-        if not task_files:
-            return Response(
-                message="No saved task results found in task_done directory.",
-                break_loop=False,
-            )
-
-        # Read all files
-        contents = []
-        for task_file in task_files:
-            try:
-                with open(task_file, "r", encoding="utf-8") as f:
-                    content = f.read().strip()
-                    if content:
-                        task_name = os.path.basename(task_file)
-                        contents.append(f"=== {task_name} ===\n{content}")
-            except Exception:
-                continue
-
-        if not contents:
-            return Response(
-                message="No content found in task_done files.",
-                break_loop=False,
-            )
-
-        # Aggregate all content
-        aggregated = "\n\n".join(contents)
-
-        # Clean up: remove all task files and directory
-        try:
-            for task_file in task_files:
-                os.remove(task_file)
-            # Also remove extracts files to clean up
-            extract_dir = _get_extract_data_dir(self.agent)
-            if os.path.isdir(extract_dir):
-                extract_files = glob.glob(os.path.join(extract_dir, "task_*_extracts.md"))
-                for ef in extract_files:
-                    try:
-                        os.remove(ef)
-                    except Exception:
-                        pass
-                try:
-                    os.rmdir(extract_dir)
-                except Exception:
-                    pass
-            try:
-                os.rmdir(task_done_dir)
-            except Exception:
-                pass
-        except Exception as e:
-            # Cleanup errors are non-critical
-            pass
-
         return Response(
-            message=f"[All Task Results Loaded]\n\n{aggregated}\n\n[Directory cleaned] All task_done and extract_data files have been removed. You can now use the data above.",
+            message=f"[All Task Results Loaded]\n\n{aggregated}\n\n[Directory cleaned] You can now use the data above.",
             break_loop=False,
         )

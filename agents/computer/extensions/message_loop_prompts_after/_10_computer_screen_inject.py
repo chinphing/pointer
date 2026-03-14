@@ -7,6 +7,7 @@ Only the latest screen inject is sent to the LLM; earlier ones are replaced with
 """
 from __future__ import annotations
 
+import hashlib
 import locale
 import os
 import platform
@@ -74,6 +75,12 @@ QUADRANT_MAP = {
 QUADRANT_PATTERN = re.compile(
     "|".join(re.escape(k) for k in QUADRANT_MAP.keys()), re.I
 )
+
+
+def _image_hash(pil_img: Image.Image, size: int = 64) -> str:
+    """Compute a stable hash of the image for before/after comparison (e.g. after scroll)."""
+    gray = pil_img.convert("L").resize((size, size), Image.Resampling.LANCZOS)
+    return hashlib.md5(gray.tobytes()).hexdigest()
 
 
 def _detect_quadrant_hint(text: str) -> Optional[str]:
@@ -323,6 +330,7 @@ class ComputerScreenInject(Extension):
             _replace_older_screen_injects_with_placeholder(loop_data.history_output, keep_last=False)
             return
 
+        current_screen_hash = _image_hash(img)
         mon_left, mon_top, mon_width, mon_height = mon_bbox
         w, h = img.size
 
@@ -431,10 +439,12 @@ class ComputerScreenInject(Extension):
         prev_action_block: Optional[str] = None
         last_action = self.agent.data.get("computer_last_vision_action")
         last_goal = self.agent.data.get("computer_last_goal") or ""
-        
+
+        # Scroll effect is now returned in the tool response (before/after hash comparison in vision_actions), not here.
+
         # Track consecutive failures - increment if same goal repeated
         failure_count = self.agent.data.get("computer_action_failure_count") or 0
-        
+
         if last_action:
             goal = last_action.get("args", {}).get("goal", "")
             result = last_action.get("result", "")
@@ -496,7 +506,8 @@ class ComputerScreenInject(Extension):
                 + annotation_help
                 + f" Image size: {w}×{h} pixels. Origin: top-left (0,0). "
                 + "The annotated image shows the current mouse cursor (red circle/crosshair). "
-                + mouse_coords_str + "\n"
+                + mouse_coords_str
+                + "\n"
                 + reference_bbox_text
                 + " When referring to elements, describe their position (e.g. top-left, center, bottom-right)."
             ),
@@ -515,7 +526,20 @@ class ComputerScreenInject(Extension):
         
         # 1. Context text (environment, instructions, annotation help)
         context_content = content.copy()
-        
+        # First turn: no AI reply yet — require plans in this response
+        has_ai_turn = any(
+            (out.get("ai") if isinstance(out, dict) else getattr(out, "ai", False))
+            for out in loop_data.history_output
+        )
+        if not has_ai_turn:
+            context_content.insert(
+                0,
+                {
+                    "type": "text",
+                    "text": "This is the first step of this task. Your response must include a <plans> block (1–10 steps, markdown list; see Communication examples).\n\n",
+                },
+            )
+
         # 2. Raw screenshot - kept in history for comparison
         b64_raw = _pil_to_base64_jpeg(img)
         raw_img_content: List[Dict[str, Any]] = [
@@ -586,3 +610,4 @@ class ComputerScreenInject(Extension):
             loop_data.history_output.append(history.OutputMessage(ai=False, content=zoomed_msg))
 
         _replace_older_screen_injects_with_placeholder(loop_data.history_output)
+        self.agent.set_data("computer_last_screen_hash", current_screen_hash)

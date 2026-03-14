@@ -1,7 +1,7 @@
 """
 Extract data from the current screen for the Computer Agent.
-Output format: markdown. Trigger: when you need to read or extract page data for temporary storage.
-Each call appends to a task-specific temp file; task_done later reads and summarizes that file.
+- extract: capture visible content, append to task temp file, return a short summary in the response.
+- load: load previously saved task data (after task_done) for use in later tasks; no re-extraction.
 """
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from io import BytesIO
 from typing import Any
 
 from agent import Agent
-from python.helpers import files
 from python.helpers.tool import Tool, Response
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -21,6 +20,10 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _COMPUTER_DIR = os.path.abspath(os.path.join(_THIS_DIR, ".."))
 if _COMPUTER_DIR not in sys.path:
     sys.path.insert(0, _COMPUTER_DIR)
+from task_data_memory import TaskDataMemory
+
+SUMMARY_MAX_CHARS_DEFAULT = 400  # default max chars of saved content in extract response
+AGENT_KEY_SUMMARY_MAX_CHARS = "computer_extract_summary_max_chars"
 
 
 def _pil_to_base64_jpeg(pil_img, quality: int = 85) -> str:
@@ -31,29 +34,72 @@ def _pil_to_base64_jpeg(pil_img, quality: int = 85) -> str:
     return base64.b64encode(buf.getvalue()).decode("utf-8")
 
 
-def _get_extract_data_dir(agent: Agent) -> str:
-    """Return absolute path for this context's extract_data directory."""
-    base = files.get_abs_path("agents", "computer", "extract_data")
-    context_id = getattr(agent.context, "id", None) or "default"
-    return os.path.join(base, context_id)
-
-
-def _get_task_extracts_path(agent: Agent, task_index: int) -> str:
-    """Path to the temp file for task_index (append mode)."""
-    return os.path.join(_get_extract_data_dir(agent), f"task_{task_index}_extracts.md")
-
-
-def _append_extract(agent: Agent, task_index: int, instruction: str, markdown_content: str) -> None:
-    """Append one extraction (target + content) to the task's temp file."""
-    path = _get_task_extracts_path(agent, task_index)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    block = f"\n\n---\n\n## Target\n{instruction}\n\n## Content\n{markdown_content}\n"
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(block)
+def _summary_of_content(text: str, max_chars: int = SUMMARY_MAX_CHARS_DEFAULT) -> str:
+    """Return a short summary of content for the response (first lines/chars)."""
+    if not (text or "").strip():
+        return "(empty)"
+    lines = text.strip().splitlines()
+    out: list[str] = []
+    n = 0
+    for line in lines:
+        if n + len(line) + 1 > max_chars:
+            if n > 0:
+                out.append(line[: max_chars - n] + "…")
+            break
+        out.append(line)
+        n += len(line) + 1
+    return "\n".join(out) if out else text[:max_chars] + "…"
 
 
 class ExtractDataTool(Tool):
-    """Extract visible content from the current screen as markdown and append to task temp file."""
+    """Extract visible content (extract) or load previously saved task data (load)."""
+
+    def _parse_task_indices(self, task_index_arg: Any) -> list[int]:
+        """Parse task_index as single int or list/seq of ints (e.g. [1,2,3] or '1,2,3')."""
+        if task_index_arg is None:
+            return []
+        if isinstance(task_index_arg, list):
+            out = []
+            for x in task_index_arg:
+                try:
+                    out.append(int(x))
+                except (TypeError, ValueError):
+                    continue
+            return out
+        if isinstance(task_index_arg, str) and "," in task_index_arg:
+            out = []
+            for part in task_index_arg.split(","):
+                try:
+                    out.append(int(part.strip()))
+                except (TypeError, ValueError):
+                    continue
+            return out
+        try:
+            return [int(task_index_arg)]
+        except (TypeError, ValueError):
+            return []
+
+    async def _execute_load(self, args: dict) -> Response:
+        """Load saved task data via memory system. Supports one or multiple task_index."""
+        indices = self._parse_task_indices(args.get("task_index"))
+        if not indices:
+            return Response(
+                message="extract_data:load requires 'task_index' (one number or list/comma-separated, e.g. 1 or [1,2] or '1,2').",
+                break_loop=False,
+            )
+        memory = TaskDataMemory(self.agent)
+        content, missing = await memory.load_tasks(indices)
+        if missing:
+            return Response(
+                message=f"Task(s) {missing} not found. Complete those with task_done first. Loaded: {[i for i in indices if i not in missing]}.",
+                break_loop=False,
+            )
+        saved_list = self.agent.get_data("computer_saved_task_indices") or []
+        hint = f" (Saved tasks available for load: {saved_list})" if saved_list else ""
+        return Response(
+            message=f"[Loaded tasks {indices}]{hint}\n\n{content}",
+            break_loop=False,
+        )
 
     async def execute(self, **kwargs: Any) -> Response:
         args = dict(self.args or {})
@@ -81,9 +127,12 @@ class ExtractDataTool(Tool):
                 break_loop=False,
             )
 
-        if getattr(self, "method", None) and self.method != "extract":
+        method = (getattr(self, "method", None) or "").strip().lower()
+        if method == "load":
+            return await self._execute_load(args)
+        if method and method != "extract":
             return Response(
-                message=f"extract_data only supports method 'extract', got '{self.method}'.",
+                message=f"extract_data supports 'extract' and 'load', got '{self.method}'.",
                 break_loop=False,
             )
         if not getattr(self.agent.config.chat_model, "vision", False):
@@ -133,9 +182,22 @@ class ExtractDataTool(Tool):
             except Exception:
                 pass
         markdown_content = str(markdown_content).strip() or raw
-        _append_extract(self.agent, task_index, instruction, markdown_content)
-        path = _get_task_extracts_path(self.agent, task_index)
+        memory = TaskDataMemory(self.agent)
+        memory.save_fragment(task_index, instruction, markdown_content)
+        max_chars = SUMMARY_MAX_CHARS_DEFAULT
+        try:
+            v = self.agent.get_data(AGENT_KEY_SUMMARY_MAX_CHARS)
+            if v is not None:
+                max_chars = int(v)
+        except (TypeError, ValueError):
+            pass
+        summary = _summary_of_content(markdown_content, max_chars)
         return Response(
-            message=f"Current visible content for task {task_index} have been extracted. Don't call extract_data again, unless you do another vision_actions/... and changed the content.",
+            message=(
+                f"Task {task_index} extract saved.\n\n"
+                f"**Saved data summary:**\n{summary}\n\n"
+                "Next: scroll if needed and extract again, or call task_done with this task_index when the task is complete. "
+                "To use this data in a later task, call extract_data:load with that task_index after it has been saved by task_done."
+            ),
             break_loop=False,
         )

@@ -735,7 +735,11 @@ class LocalSentenceTransformerWrapper(Embeddings):
             from python.helpers import files
             st_kwargs["cache_folder"] = str(files.get_abs_path("tmp", "models", "sentence_transformers"))
 
-        self.model = SentenceTransformer(model, **st_kwargs)
+        # Prefer local cache: if model is already cached, skip HuggingFace access
+        try:
+            self.model = SentenceTransformer(model, local_files_only=True, **st_kwargs)
+        except Exception:
+            self.model = SentenceTransformer(model, **st_kwargs)
         self.model_name = model
         self.a0_model_conf = model_config
 

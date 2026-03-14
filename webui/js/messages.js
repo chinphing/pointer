@@ -1649,6 +1649,7 @@ function convertImageTags(content) {
 }
 
 function convertHTML(str) {
+  if (str == null) str = "";
   if (typeof str !== "string") str = JSON.stringify(str, null, 2);
 
   let result = escapeHTML(str);
@@ -1666,6 +1667,7 @@ function convertFilePaths(str) {
 }
 
 function escapeHTML(str) {
+  if (str == null) return "";
   const escapeChars = {
     "&": "&amp;",
     "<": "&lt;",
@@ -1673,7 +1675,7 @@ function escapeHTML(str) {
     "'": "&#39;",
     '"': "&quot;",
   };
-  return str.replace(/[&<>'"]/g, (char) => escapeChars[char]);
+  return String(str).replace(/[&<>'"]/g, (char) => escapeChars[char]);
 }
 
 function convertPathsToLinks(str) {

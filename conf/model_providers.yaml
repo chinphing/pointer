@@ -71,6 +71,11 @@ chat:
   bedrock:
     name: AWS Bedrock
     litellm_provider: bedrock
+  qwen3_5:
+    name: Qwen 3.5
+    litellm_provider: dashscope
+    kwargs:
+      api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
   openrouter:
     name: OpenRouter
     litellm_provider: openrouter

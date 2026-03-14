@@ -43,7 +43,7 @@ class VisionActionsTool(Tool):
             },
         )
         # wait for ui to load. 
-        time.sleep(0.5)
+        time.sleep(0.3)
         await super().after_execution(response, **kwargs)
 
     def _resolve_index(
@@ -221,6 +221,7 @@ class VisionActionsTool(Tool):
                 return Response(message="Missing 'text' in tool_args.", break_loop=False)
             actions._type_text(str(text))
             return Response(message=f"Goal: {goal}. tool_args: {self._tool_args_for_response(args)}. Action executed; verify result on next screenshot.", break_loop=False)
+
 
         # Index-based methods require index_map
         index_map: Dict[int, Dict[str, float]] = (

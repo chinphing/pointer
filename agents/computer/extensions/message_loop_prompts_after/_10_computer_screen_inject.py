@@ -1,6 +1,6 @@
 """
 Inject current screen images into the prompt for the computer profile.
-Image order: (1) raw screenshot, (2) annotated image with indices, then (3) 2x zoomed regions (default top 1/4; optional extra from user/model area).
+Image order: (1) raw screenshot, (2) annotated image with indices, (3) zoom: 300px region around mouse, 3× magnification.
 Uses predict_and_annotate_all for detection; builds index_map (screen coordinates) for vision_actions tools.
 Saves images under agents/computer/snapshots/<context_id>/.
 Only the latest screen inject is sent to the LLM; earlier ones are replaced with a text placeholder to reduce token usage.
@@ -35,6 +35,9 @@ import screen as screen_mod  # noqa: E402
 import som_util  # noqa: E402
 import os_prompts  # noqa: E402
 
+
+# nearest neighbor count
+NEAREST_NEIGHBOR_COUNT = 10
 
 # Region keywords: (name, (x_frac_start, y_frac_start, x_frac_end, y_frac_end))
 # Center is middle 50%×50%; quadrants are half-width, half-height.
@@ -99,6 +102,28 @@ def _crop_quadrant_2x(pil_img: Image.Image, quadrant_key: str) -> Optional[Image
     new_w = crop.width * 2
     new_h = crop.height * 2
     return crop.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+
+# Crop size (px) around mouse; output is this size * MOUSE_ZOOM_SCALE
+MOUSE_ZOOM_CROP_SIZE = 300
+MOUSE_ZOOM_SCALE = 3
+
+
+def _crop_around_mouse_3x(
+    pil_img: Image.Image, mouse_ix: int, mouse_iy: int
+) -> Optional[Image.Image]:
+    """Crop a MOUSE_ZOOM_CROP_SIZE×MOUSE_ZOOM_CROP_SIZE region centered on mouse, then resize 3x. Returns None if crop would be empty."""
+    w, h = pil_img.size
+    half = MOUSE_ZOOM_CROP_SIZE // 2
+    x1 = max(0, mouse_ix - half)
+    y1 = max(0, mouse_iy - half)
+    x2 = min(w, mouse_ix + half)
+    y2 = min(h, mouse_iy + half)
+    if x2 <= x1 or y2 <= y1:
+        return None
+    crop = pil_img.crop((x1, y1, x2, y2))
+    out_size = crop.width * MOUSE_ZOOM_SCALE, crop.height * MOUSE_ZOOM_SCALE
+    return crop.resize(out_size, Image.Resampling.LANCZOS)
 
 
 def _pil_to_base64_jpeg(pil_img: Image.Image, quality: int = 85) -> str:
@@ -369,7 +394,7 @@ class ComputerScreenInject(Extension):
                 idx_rtree.insert(idx, (x1, y1, x2, y2))
 
             # Use rtree nearest to get 5 elements closest to the mouse (screenshot point)
-            nearest_ids = list(idx_rtree.nearest((mouse_ix, mouse_iy, mouse_ix, mouse_iy), 5))
+            nearest_ids = list(idx_rtree.nearest((mouse_ix, mouse_iy, mouse_ix, mouse_iy), NEAREST_NEIGHBOR_COUNT))
             nearest_items = [(i, im_boxes[i]) for i in nearest_ids]
 
             def _fmt_norm(items: List[Tuple[int, Tuple[float, float, float, float]]], iw: int, ih: int, sys: str) -> str:
@@ -383,7 +408,7 @@ class ComputerScreenInject(Extension):
                 return "; ".join(parts)
 
             reference_bbox_text = (
-                " Reference bboxes (normalized, same scale as your output). 5 nearest marked elements to the mouse: "
+                f" Reference bboxes (normalized, same scale as your output). {NEAREST_NEIGHBOR_COUNT} nearest marked elements to the mouse: "
                 f"{_fmt_norm(nearest_items, w, h, coord_system)}. "
                 "Coordinate-based principles: (1) Reference bbox must have explicit coordinates above and be very close to the target (within 50 pixels). "
                 "(2) Derive x, y using the reference element as anchor; do not guess coordinates without a clear basis. "
@@ -467,8 +492,7 @@ class ComputerScreenInject(Extension):
                 "Input types for this turn: "
                 "(1) raw screenshot; "
                 "(2) annotated screenshot with indices; "
-                "(3) top-area 2x zoom from the annotated screenshot for index confirmation; "
-                "(4) optional extra local 2x zooms for other regions when needed. "
+                "(3) zoom: 300px region around current mouse position, 3× magnification. "
                 + annotation_help
                 + f" Image size: {w}×{h} pixels. Origin: top-left (0,0). "
                 + "The annotated image shows the current mouse cursor (red circle/crosshair). "
@@ -512,54 +536,20 @@ class ComputerScreenInject(Extension):
             },
         ]
 
-        # 4. Zoomed screenshot - Always include top 1/4 from high-confidence image; add extra zoom if user specified a region
-        # Default: always zoom top 1/4 because interactive elements are dense there
+        # 4. Zoomed screenshot - only 300px region around mouse, 3× magnification
         zoomed_contents: List[Tuple[str, List[Dict[str, Any]]]] = []
-        zoomed_for_snapshot: Optional[Tuple[str, Image.Image]] = None
-
-        # Always generate top 1/4 zoom (fixed behavior)
-        top_zoomed = _crop_quadrant_2x(annotated_img, "top")
-        if top_zoomed is not None:
-            zoomed_for_snapshot = ("top", top_zoomed)
-            b64_top = _pil_to_base64_jpeg(top_zoomed)
-            zoomed_contents.append(("top", [
-                {"type": "text", "text": "[Screen zoomed] top, 2x (default focus area):"},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_top}"}},
-            ]))
-
-        # Check if user/model mentioned a specific region (excluding top/upper which is default)
-        user_msg = ""
-        if loop_data.user_message and getattr(loop_data.user_message, "message", None):
-            user_msg = loop_data.user_message.message or ""
-        last_resp = (loop_data.last_response or "").lower()
-        combined = f"{user_msg} {last_resp}"
-        quadrant_key = _detect_quadrant_hint(combined)
-
-        # Ignore top/upper region mentions since top is already default zoomed
-        # Non-default regions: left, right, bottom, center, quadrants, etc.
-        TOP_REGION_KEYS = {"top", "上方", "顶部"}
-        if quadrant_key and quadrant_key not in TOP_REGION_KEYS:
-            quadrant_key = quadrant_key.lower().replace("-", "_")
-            if quadrant_key in QUADRANT_MAP:
-                extra_zoomed = _crop_quadrant_2x(annotated_img, quadrant_key)
-                if extra_zoomed is not None:
-                    b64_extra = _pil_to_base64_jpeg(extra_zoomed)
-                    zoomed_contents.append((quadrant_key, [
-                        {"type": "text", "text": f"[Screen zoomed] {quadrant_key}, 2x:"},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_extra}"}},
-                    ]))
+        zoomed_imgs_to_save: List[Tuple[str, Image.Image]] = []
+        if mouse_ix is not None and mouse_iy is not None:
+            mouse_zoomed = _crop_around_mouse_3x(annotated_img, mouse_ix, mouse_iy)
+            if mouse_zoomed is not None:
+                b64_mouse = _pil_to_base64_jpeg(mouse_zoomed)
+                zoomed_contents.append(("mouse", [
+                    {"type": "text", "text": f"[Screen zoomed] {MOUSE_ZOOM_CROP_SIZE}px around cursor, {MOUSE_ZOOM_SCALE}×:"},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_mouse}"}},
+                ]))
+                zoomed_imgs_to_save.append(("mouse", mouse_zoomed))
 
         context_id = getattr(self.agent.context, "id", None) or "default"
-        # Build list of zoomed images for saving (extract from zoomed_contents)
-        zoomed_imgs_to_save: List[Tuple[str, Image.Image]] = []
-        for z_key, _ in zoomed_contents:
-            if z_key == "top" and top_zoomed is not None:
-                zoomed_imgs_to_save.append(("top", top_zoomed))
-            elif z_key != "top":
-                # Re-crop for non-top regions (or we could cache earlier)
-                extra_img = _crop_quadrant_2x(annotated_img, z_key)
-                if extra_img is not None:
-                    zoomed_imgs_to_save.append((z_key, extra_img))
         saved_paths = _save_snapshots(context_id, img, annotated_img, zoomed_imgs_to_save)
 
         # In development mode, attach snapshot link to the last GEN log item
@@ -590,7 +580,7 @@ class ComputerScreenInject(Extension):
         annotated_msg = history.RawMessage(raw_content=annotated_img_content, preview=SCREEN_ANNOTATED_PREVIEW)
         loop_data.history_output.append(history.OutputMessage(ai=False, content=annotated_msg))
 
-        # 4. Zoomed screenshots (default top 1/4 + optional extra regions)
+        # 4. Zoomed screenshot (mouse region only)
         for z_key, z_content in zoomed_contents:
             zoomed_msg = history.RawMessage(raw_content=z_content, preview=f"{SCREEN_ZOOMED_PREVIEW} {z_key}")
             loop_data.history_output.append(history.OutputMessage(ai=False, content=zoomed_msg))

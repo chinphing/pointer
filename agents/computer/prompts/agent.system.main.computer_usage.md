@@ -43,7 +43,7 @@ If previous action was scroll, compare current and previous raw screenshots.
 - No overlap: scroll back by half of previous amount, then continue with smaller amount.
 - Overlap too small: decrease next scroll amount.
 - Overlap too large: increase next scroll amount.
-- Valid scroll range: 1–30 (scroll wheel notches, each notch ≈ 20-30 pixels).
+- Valid scroll amount range: [1, 30] for scroll up. [-30, -1] for scroll down. Scroll wheel notches, each notch ≈ 20-30 pixels
 
 In thoughts, briefly state:
 - overlap evidence (what repeated),
@@ -52,6 +52,7 @@ In thoughts, briefly state:
 
 ### 6) Input and UI focus
 
+- Click text area or blank area for input box to aquire focus, don't click icon or label text before input box.
 - Type only after focus is confirmed.
 - Replace text with select-all + type when user intent is replace.
 - Use `type_text_focused` only when focus is clearly retained.

@@ -391,6 +391,167 @@ img {
   scroll-behavior: smooth;
 }
 
+/* Right Panel: column when screenshot present (top row + bottom input) */
+.right-panel-with-screenshot {
+  display: -webkit-flex;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  flex-grow: 1;
+  -webkit-transition: margin-left var(--transition-speed) ease-in-out;
+  transition: margin-left var(--transition-speed) ease-in-out;
+}
+
+/* Top section: row of chat + screenshot (when has-screenshot-column) or single chat (when not) */
+.right-panel-top {
+  display: -webkit-flex;
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Chat area: full width when no screenshot column */
+#right-panel .chat-area {
+  display: -webkit-flex;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  -webkit-scroll-behavior: smooth;
+  scroll-behavior: smooth;
+}
+
+/* Chat area: 40% when screenshot column expanded */
+#right-panel.right-panel-with-screenshot.has-screenshot-column .right-panel-top .chat-area {
+  flex: 0 0 40%;
+  min-width: 180px;
+  max-width: 40%;
+  transition: flex 0.2s ease, max-width 0.2s ease;
+}
+
+/* When screenshot collapsed: chat area expands to fill right */
+#right-panel.screenshot-column-collapsed .right-panel-top .chat-area {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  width: auto !important;
+}
+
+/* Right column: 60% when expanded */
+#right-panel .screenshot-and-input-column {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 60%;
+  min-width: 0;
+  border-left: 1px solid var(--color-border);
+  background: var(--color-panel);
+  transition: flex 0.2s ease;
+}
+
+/* When screenshot collapsed: column shrinks to 32px */
+#right-panel.screenshot-column-collapsed .screenshot-and-input-column {
+  flex: 0 0 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
+  width: 32px !important;
+}
+
+.screenshot-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  transition: min-width 0.2s ease, width 0.2s ease;
+  overflow: hidden;
+}
+
+/* Bottom input: spans full width of right panel (both chat + screenshot) */
+.right-panel-bottom {
+  flex-shrink: 0;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-panel);
+  width: 100%;
+}
+
+/* Screenshot panel (computer profile): raw screen capture */
+#screenshot-panel.screenshot-panel {
+  width: 100%;
+  max-width: 100%;
+}
+
+.screenshot-panel--collapsed {
+  flex: 0 0 auto;
+  min-width: 32px;
+  width: 32px;
+  max-width: 32px;
+}
+
+.screenshot-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.screenshot-panel--collapsed .screenshot-panel__header {
+  flex-direction: column;
+  padding: 6px 4px;
+  border-bottom: none;
+}
+
+.screenshot-panel__title {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.screenshot-panel--collapsed .screenshot-panel__title {
+  display: none;
+}
+
+.screenshot-panel__toggle {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.screenshot-panel__toggle:hover {
+  color: var(--color-text);
+}
+
+.screenshot-panel__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 8px;
+}
+
+.screenshot-panel__img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
+
+.screenshot-panel__placeholder {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  align-self: center;
+  margin: auto;
+}
+
 /* Right Panel */
 #right-panel {
   display: -webkit-flex;
@@ -400,6 +561,10 @@ img {
   flex-grow: 1;
   -webkit-transition: margin-left var(--transition-speed) ease-in-out;
   transition: margin-left var(--transition-speed) ease-in-out;
+}
+
+#right-panel.right-panel-with-screenshot {
+  flex-direction: column;
 }
 
 /* Scrollbar styles for right panel */

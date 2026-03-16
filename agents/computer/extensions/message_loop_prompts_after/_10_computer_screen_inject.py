@@ -7,6 +7,7 @@ Only the latest screen inject is sent to the LLM; earlier ones are replaced with
 """
 from __future__ import annotations
 
+import base64
 import locale
 import os
 import platform
@@ -259,6 +260,11 @@ class ComputerScreenInject(Extension):
 
         mon_left, mon_top, mon_width, mon_height = mon_bbox
         w, h = img.size
+
+        # Store raw screenshot as base64 for frontend live preview (snapshot.computer_screen_raw)
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        self.agent.set_data("computer_screen_raw_base64", base64.b64encode(buf.getvalue()).decode("ascii"))
 
         err_preview = ""
         annotator = _get_annotator()

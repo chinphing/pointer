@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import base64
+import os
+import sys
 import types
+from io import BytesIO
 from typing import Any, Mapping, TypedDict, Union, get_args, get_origin, get_type_hints
 
 from dataclasses import dataclass
@@ -30,6 +34,8 @@ class SnapshotV1(TypedDict):
     notifications: list[dict[str, Any]]
     notifications_guid: str
     notifications_version: int
+    # Optional: raw screenshot for computer profile (data URL or empty string)
+    computer_screen_raw: str
 
 @dataclass(frozen=True)
 class StateRequestV1:
@@ -211,6 +217,43 @@ def advance_state_request_after_snapshot(
     )
 
 
+def _capture_screen_as_base64() -> str | None:
+    """Capture current monitor as PNG base64. Reusable for snapshot and welcome page. Returns None on failure."""
+    try:
+        _root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        _computer_dir = os.path.join(_root, "agents", "computer")
+        if _computer_dir not in sys.path:
+            sys.path.insert(0, _computer_dir)
+        import screen as _screen_mod  # noqa: E402  # type: ignore[import-not-found]
+        _img, _ = _screen_mod.screenshot_current_monitor()
+        _buf = BytesIO()
+        _img.save(_buf, format="PNG")
+        return base64.b64encode(_buf.getvalue()).decode("ascii")
+    except Exception:
+        return None
+
+
+def _computer_screen_raw_for_snapshot(active_context: Any) -> str:
+    """Return data URL for computer_screen_raw: from agent cache, or capture (for chat or welcome page). Reused for both."""
+    data_url = ""
+    if active_context:
+        agent = active_context.get_agent()
+        if agent and getattr(agent.config, "profile", "") == "computer":
+            b64 = agent.get_data("computer_screen_raw_base64")
+            if not b64:
+                b64 = _capture_screen_as_base64()
+                if b64:
+                    agent.set_data("computer_screen_raw_base64", b64)
+            if b64:
+                data_url = "data:image/png;base64," + b64
+        return data_url
+    # Welcome page (no context): still show a screenshot for consistent UI
+    b64 = _capture_screen_as_base64()
+    if b64:
+        data_url = "data:image/png;base64," + b64
+    return data_url
+
+
 async def build_snapshot_from_request(*, request: StateRequestV1) -> SnapshotV1:
     """Build a poll-shaped snapshot for both /poll and state_push."""
 
@@ -283,6 +326,8 @@ async def build_snapshot_from_request(*, request: StateRequestV1) -> SnapshotV1:
     ctxs.sort(key=lambda x: x["created_at"], reverse=True)
     tasks.sort(key=lambda x: x["created_at"], reverse=True)
 
+    computer_screen_raw = _computer_screen_raw_for_snapshot(active_context)
+
     snapshot: SnapshotV1 = {
         "deselect_chat": bool(ctxid) and active_context is None,
         "context": active_context.id if active_context else "",
@@ -297,6 +342,7 @@ async def build_snapshot_from_request(*, request: StateRequestV1) -> SnapshotV1:
         "notifications": notifications,
         "notifications_guid": notification_manager.guid,
         "notifications_version": len(notification_manager.updates),
+        "computer_screen_raw": computer_screen_raw,
     }
 
     validate_snapshot_schema_v1(snapshot)

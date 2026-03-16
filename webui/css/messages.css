@@ -10,8 +10,8 @@
   overflow-y: scroll;
   overflow-x: hidden;
   scroll-behavior: auto !important; /* avoid infinite scrolling! */
-  padding-left: var(--spacing-sm) !important;
-  padding-right: var(--spacing-md) !important;
+  padding-left: 10px !important;
+  padding-right: 10px !important;
   padding-top: 4rem !important;
   padding-bottom: 4rem !important;
   -webkit-transition: all 0.3s ease;
@@ -451,11 +451,11 @@
 @media (min-width: 1025px) {
   #chat-history {
     padding-left: max(
-      var(--spacing-sm),
+      10px,
       calc((100% - var(--chat-max-width, 55em)) / 2)
     ) !important;
     padding-right: max(
-      var(--spacing-sm),
+      10px,
       calc((100% - var(--chat-max-width, 55em)) / 2)
     ) !important;
   }
@@ -463,8 +463,8 @@
 
 @media (max-width: 1024px) {
   #chat-history {
-    padding-left: var(--spacing-sm) !important;
-    padding-right: var(--spacing-md) !important;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
     padding-top: 4rem !important;
     padding-bottom: 3rem !important;
   }

@@ -12,7 +12,8 @@ import { store as tasksStore } from "/components/sidebar/tasks/tasks-store.js";
 import { store as chatTopStore } from "/components/chat/top-section/chat-top-store.js";
 import { store as _tooltipsStore } from "/components/tooltips/tooltip-store.js";
 import { store as messageQueueStore } from "/components/chat/message-queue/message-queue-store.js";
-import { store as syncStore } from "/components/sync/sync-store.js"
+import { store as syncStore } from "/components/sync/sync-store.js";
+import { store as computerScreenStore } from "/components/chat/computer-screen/computer-screen-store.js";
 
 globalThis.fetchApi = api.fetchApi; // TODO - backward compatibility for non-modular scripts, remove once refactored to alpine
 
@@ -340,6 +341,11 @@ export async function applySnapshot(snapshot, options = {}) {
   lastLogGuid = snapshot.log_guid;
 
   updateProgress(snapshot.log_progress, snapshot.log_progress_active);
+
+  // Update computer raw screenshot for right-panel preview (computer profile)
+  if (typeof snapshot.computer_screen_raw === "string") {
+    computerScreenStore.setComputerScreenRaw(snapshot.computer_screen_raw);
+  }
 
   // Update notifications from snapshot
   notificationStore.updateFromPoll(snapshot);

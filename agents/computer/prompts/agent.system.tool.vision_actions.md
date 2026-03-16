@@ -18,7 +18,7 @@ Core rules:
 Methods:
 - `click_index`, `double_click_index`, `right_click_index`, `hover_index` (`index`, `goal`, optional `delta_x`, `delta_y`, `target_in_bbox`)
 - **Multi-select by index** — `multi_select_by_index` (`indices`, `goal`): Select **several items at once** (list rows, files, checkboxes). **Implementation**: the tool **holds Cmd (macOS) or Ctrl (Windows/Linux)**, then **clicks each target element in order** by index, then **releases Cmd/Ctrl** — same as user doing “Ctrl+click” / “Cmd+click” to add to selection. **When to use**: "select multiple", "select items 1, 3, 5", "select several rows/files". **indices**: which item numbers to select — list of integers (e.g. `[1, 3, 5]`) or comma-separated string (e.g. `"1,3,5"`). Each must be a 1-based index on the annotated image.
-- `type_text_at_index` (`index`, `goal`, `text`, optional `clear_first`, `delta_x`, `delta_y`, `target_in_bbox`)
+- `type_text_at_index` (`index`, `goal`, `text`, optional `clear_first`, `delta_x`, `delta_y`, `target_in_bbox`) — **Clicks the target to focus, then types.** When the goal is to enter text into an element that has an index, use this **directly**; **do not** call `click_index` first. One call is enough and faster.
 - `drag_index_to_index` (`index`, `to_index`, `goal`)
 - `scroll_at_index` (`index`, `goal`, `amount`, optional `delta_x`, `delta_y`, `target_in_bbox`)
      `amount` for scroll: scroll wheel notches. Valid range: [1, 10] for scroll up, [-10, -1] for scroll down. **Generally use 10** (or -10). Use **5 or -5** when you want to keep the previously edited content in view and scroll to find the Save button.

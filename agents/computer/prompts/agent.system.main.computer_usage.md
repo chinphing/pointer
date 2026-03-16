@@ -73,9 +73,9 @@ In thoughts, briefly state: overlap evidence (what repeated), overlap size (roug
 
 ### 6) Input and UI focus
 
-- Click text area or blank area for input box to aquire focus, don't click icon or label text before input box.
-- Type only after focus is confirmed.
-- Replace text with select-all + type when user intent is replace.
+- **When entering text into a field that has an index:** use `type_text_at_index` **directly**. It already clicks the target to focus and then types — **do not** call `click_index` first; that is redundant and slower.
+- Click text area or blank area for input box to acquire focus only when you are not typing (e.g. opening a menu). For "type into this field", prefer `type_text_at_index` in one step.
+- Replace text with select-all + type when user intent is replace (use `clear_first: true` in `type_text_at_index` or equivalent).
 
 ### 7) Unavailable or disabled interactive elements
 

@@ -538,11 +538,28 @@ img {
   padding: 8px;
 }
 
+.screenshot-panel__img-wrap {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
 .screenshot-panel__img {
   max-width: 100%;
   height: auto;
   display: block;
   object-fit: contain;
+}
+
+/* Cursor overlay: SVG pointer (black + white outline), tip at (left, top), 4× size */
+.screenshot-panel__cursor {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  pointer-events: none;
+  display: block;
+  filter: drop-shadow(0 0 1px rgba(0,0,0,.4));
 }
 
 .screenshot-panel__placeholder {

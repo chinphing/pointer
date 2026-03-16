@@ -15,7 +15,50 @@ import { store as messageQueueStore } from "/components/chat/message-queue/messa
 import { store as syncStore } from "/components/sync/sync-store.js";
 import { store as computerScreenStore } from "/components/chat/computer-screen/computer-screen-store.js";
 
-globalThis.fetchApi = api.fetchApi; // TODO - backward compatibility for non-modular scripts, remove once refactored to alpine
+globalThis.fetchApi = api.fetchApi;
+
+// Cursor overlay on raw screenshot: position from store, scaled to displayed image (object-fit: contain)
+document.addEventListener("alpine:init", () => {
+  Alpine.data("screenshotWithCursor", () => ({
+    imgEl: null,
+    natW: 0,
+    natH: 0,
+    cursorVisible: false,
+    cursorStyle: {},
+    onImgLoad(ev) {
+      this.imgEl = ev.target;
+      this.natW = ev.target.naturalWidth;
+      this.natH = ev.target.naturalHeight;
+      this.$nextTick(() => this.updateCursor());
+    },
+    updateCursor() {
+      const store = this.$store?.computerScreen;
+      const mouse = store?.computerScreenMouse;
+      if (!this.imgEl || !this.natW || !this.natH || !mouse) {
+        this.cursorVisible = false;
+        return;
+      }
+      const dw = this.imgEl.offsetWidth;
+      const dh = this.imgEl.offsetHeight;
+      const scale = Math.min(dw / this.natW, dh / this.natH);
+      const contentW = this.natW * scale;
+      const contentH = this.natH * scale;
+      const offsetX = (dw - contentW) / 2;
+      const offsetY = (dh - contentH) / 2;
+      this.cursorStyle = {
+        left: offsetX + mouse[0] * scale + "px",
+        top: offsetY + mouse[1] * scale + "px",
+      };
+      this.cursorVisible = true;
+    },
+    init() {
+      this.$watch(
+        () => this.$store?.computerScreen?.computerScreenMouse,
+        () => this.updateCursor()
+      );
+    },
+  }));
+}); // TODO - backward compatibility for non-modular scripts, remove once refactored to alpine
 
 // Declare variables for DOM elements, they will be assigned on DOMContentLoaded
 let leftPanel,
@@ -342,10 +385,11 @@ export async function applySnapshot(snapshot, options = {}) {
 
   updateProgress(snapshot.log_progress, snapshot.log_progress_active);
 
-  // Update computer raw screenshot for right-panel preview (computer profile)
+  // Update computer raw screenshot and mouse position for right-panel preview (computer profile)
   if (typeof snapshot.computer_screen_raw === "string") {
     computerScreenStore.setComputerScreenRaw(snapshot.computer_screen_raw);
   }
+  computerScreenStore.setComputerScreenMouse(snapshot.computer_screen_mouse ?? null);
 
   // Update notifications from snapshot
   notificationStore.updateFromPoll(snapshot);
@@ -739,6 +783,9 @@ document.addEventListener("DOMContentLoaded", function () {
   autoScrollSwitch = document.getElementById("auto-scroll-switch");
   timeDate = document.getElementById("time-date-container");
 
+  // Pre-fetch CSRF token so WebSocket auth (e.g. /state_sync) has it before first connect.
+  // Avoids "missing csrf_token in auth" when sync store connects before any other API call.
+  api.getCsrfToken().catch(() => {});
 
   // Start polling for updates
   startPolling();

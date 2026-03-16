@@ -24,7 +24,6 @@ Methods:
      `amount` for scroll: scroll wheel notches. Valid range: [1, 10] for scroll up, [-10, -1] for scroll down. **Generally use 10** (or -10). Use **5 or -5** when you want to keep the previously edited content in view and scroll to find the Save button.
 - `scroll_at_current` (`goal`, `amount`) — Scroll at **current cursor position** (no index). You may call it **directly when the mouse is already inside the scrollable area**; otherwise use `scroll_at_index` first to position, then use `scroll_at_current` for further scrolls. Same `amount` convention: positive = up, negative = down. Generally use 10/-10; use 5/-5 to keep the previously edited content in view and scroll to find the Save button.
 - **Coordinate-based** (target has no index; follow the three principles above): `click_at`, `double_click_at`, `right_click_at`, `hover_at` (`goal`, `x`, `y`); `type_text_at` (`goal`, `x`, `y`, `text`)
-- `type_text_focused` (`goal`, `text`)
 - `press_keys` (`goal`, `keys`)
 - `wait` (`goal`, `seconds`)
 

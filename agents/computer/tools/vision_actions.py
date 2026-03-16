@@ -331,13 +331,6 @@ class VisionActionsTool(Tool):
         actions._type_text(str(text))
         return self._action_done(goal, args)
 
-    def _do_type_text_focused(self, args: Dict[str, Any], actions: ActionTools, goal: str) -> Response:
-        text = args.get("text", "")
-        if not text:
-            return Response(message="Missing 'text' in tool_args.", break_loop=False)
-        actions._type_text(str(text))
-        return self._action_done(goal, args)
-
     def _do_click_indices_for_selection(
         self, args: Dict[str, Any], actions: ActionTools, goal: str
     ) -> Response:
@@ -498,7 +491,7 @@ class VisionActionsTool(Tool):
             return handler(self, args, actions, goal)
 
         return Response(
-            message=f"Unknown method: {method}. Use index-based (click_index, double_click_index, type_text_at_index, right_click_index, hover_index, drag_index_to_index, scroll_at_index, multi_select_by_index), scroll_at_current (scroll at cursor, no index), coordinate-based (click_at, double_click_at, right_click_at, hover_at, type_text_at with x,y in normalized coords), type_text_focused, press_keys, or wait.",
+            message=f"Unknown method: {method}. Use index-based (click_index, double_click_index, type_text_at_index, right_click_index, hover_index, drag_index_to_index, scroll_at_index, multi_select_by_index), scroll_at_current (scroll at cursor, no index), coordinate-based (click_at, double_click_at, right_click_at, hover_at, type_text_at with x,y in normalized coords), press_keys, or wait.",
             break_loop=False,
         )
 
@@ -513,7 +506,6 @@ _METHOD_HANDLERS: Dict[str, Any] = {
     "right_click_at": VisionActionsTool._do_right_click_at,
     "hover_at": VisionActionsTool._do_hover_at,
     "type_text_at": VisionActionsTool._do_type_text_at,
-    "type_text_focused": VisionActionsTool._do_type_text_focused,
     "scroll_at_current": VisionActionsTool._do_scroll_at_current,
 
     # index-based tools for elements with indices

@@ -265,6 +265,20 @@ class ComputerScreenInject(Extension):
         buf = BytesIO()
         img.save(buf, format="PNG")
         self.agent.set_data("computer_screen_raw_base64", base64.b64encode(buf.getvalue()).decode("ascii"))
+        # Mouse position for cursor overlay; capture now so frontend can show screenshot immediately
+        try:
+            mx, my = pyautogui.position()
+            self.agent.set_data("computer_screen_mouse_xy", [mx - mon_left, my - mon_top])
+        except Exception:
+            pass
+        # Push snapshot so frontend shows this screenshot before slow annotation/model run
+        try:
+            from python.helpers.state_monitor_integration import mark_dirty_for_context
+            ctx_id = getattr(self.agent.context, "id", None)
+            if ctx_id:
+                mark_dirty_for_context(ctx_id, reason="computer_screen_raw")
+        except Exception:
+            pass
 
         err_preview = ""
         annotator = _get_annotator()
@@ -307,6 +321,7 @@ class ComputerScreenInject(Extension):
             mx, my = pyautogui.position()
             mouse_ix = mx - mon_left
             mouse_iy = my - mon_top
+            self.agent.set_data("computer_screen_mouse_xy", [mouse_ix, mouse_iy])
             if 0 <= mouse_ix < w and 0 <= mouse_iy < h:
                 annotated_img = _draw_mouse_overlay(annotated_img, mouse_ix, mouse_iy)
                 nx, ny = coord_convert.pixel_to_normalized(mouse_ix, mouse_iy, coord_system, w, h)

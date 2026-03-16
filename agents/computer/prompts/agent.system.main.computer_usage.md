@@ -76,7 +76,6 @@ In thoughts, briefly state: overlap evidence (what repeated), overlap size (roug
 - Click text area or blank area for input box to aquire focus, don't click icon or label text before input box.
 - Type only after focus is confirmed.
 - Replace text with select-all + type when user intent is replace.
-- Use `type_text_focused` only when focus is clearly retained.
 
 ### 7) Unavailable or disabled interactive elements
 

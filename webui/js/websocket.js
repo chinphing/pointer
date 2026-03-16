@@ -363,15 +363,19 @@ class WebSocketClient {
 
       if (this.socket.connected) return;
 
-      // Ensure the current runtime-bound session + CSRF cookies exist before initiating
-      // the Engine.IO handshake. This is required for seamless reconnect after backend
-      // restarts that rotate runtime_id and session cookie names.
-      try {
-        await getCsrfToken();
-      } catch (error) {
-        this.debugLog("csrf prefetch failed - continuing", {
-          error: error instanceof Error ? error.message : String(error),
-        });
+      // Must have CSRF token before handshake so auth callback sends it (avoids "missing csrf_token in auth" after restart).
+      let token = null;
+      for (const attempt of [0, 1]) {
+        if (attempt > 0) await new Promise((r) => setTimeout(r, 300));
+        try {
+          token = await getCsrfToken();
+          if (typeof token === "string" && token.length > 0) break;
+        } catch (error) {
+          this.debugLog("csrf prefetch failed", { attempt, error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+      if (typeof token !== "string" || token.length === 0) {
+        throw new Error("WebSocket connection failed: no CSRF token (refresh the page or check /csrf_token)");
       }
 
       await new Promise((resolve, reject) => {
@@ -564,7 +568,14 @@ class WebSocketClient {
       withCredentials: true,
       auth: (cb) => {
         getCsrfToken()
-          .then((token) => cb({ csrf_token: token }))
+          .then((token) => {
+            if (typeof token === "string" && token.length > 0) {
+              cb({ csrf_token: token });
+            } else {
+              console.error("[websocket] CSRF token missing or invalid for connect");
+              cb({});
+            }
+          })
           .catch((error) => {
             console.error("[websocket] failed to fetch CSRF token for connect", error);
             cb({});

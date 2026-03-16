@@ -40,7 +40,7 @@ Required fields:
 
 ### Reading/data policy
 
-- Before each scroll: `extract_data:extract` with `task_index`. First scroll: `scroll_at_index`; use `scroll_at_current` only after a successful `scroll_at_index` (scroll effect: screen **changed**). Then use `scroll_at_current` for further scrolls (no re-targeting). When reading is complete, stop scrolling and call `task_done` with that `task_index` once; avoid scrolling up and down repeatedly.
+- Before each scroll: `extract_data:extract` with `task_index`. If the mouse is already in the scrollable area, use `scroll_at_current` directly; otherwise use `scroll_at_index` first, then `scroll_at_current` for further scrolls. Generally use amount 10 or -10; use 5 or -5 to keep the previously edited content in view and scroll to find the Save button. When reading is complete, call `task_done` with that `task_index` once; avoid scrolling up and down repeatedly.
 - **Scroll anchor**: For `scroll_at_index`, be specific: if text, include the text content; if icon/image, describe it; otherwise position and features. In `thoughts` before calling scroll, describe the top and bottom content of the scroll region to verify the scroll on the next turn.
 - One `task_done` call (with task_index) per completed subtask; the tool auto-merges fragments, stashes data, and clears history.
 - When a later step needs another task’s full content: `extract_data:load` (may be called in the middle). **Only at the end**, when you need all saved data for the final response: `task_done:read` once, then `response`.
@@ -50,7 +50,7 @@ Required fields:
 
 Allowed tools:
 - `list_dir_structure` (path: get full directory/file tree including subdirs; call first when a subtask involves a folder)
-- `vision_actions:*` (click/type/scroll: use `scroll_at_index` first, then `scroll_at_current`; for **selecting multiple items** use `multi_select_by_index` with `indices` list; keys/wait by index or coordinates x,y when target has no index)
+- `vision_actions:*` (click/type/scroll: when mouse is already in scrollable area use `scroll_at_current` directly; otherwise `scroll_at_index` then `scroll_at_current`; for **selecting multiple items** use `multi_select_by_index` when the screenshot has index labels; keys/wait by index or coordinates when target has no index)
 - `extract_data:extract` (saves and returns a short summary); `extract_data:load` (load one task’s saved data for a later task)
 - `task_done` (with task_index; auto-merges fragments; response includes saved-data summary and load hint)
 - `task_done:read`

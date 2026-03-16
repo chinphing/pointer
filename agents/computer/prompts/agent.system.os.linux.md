@@ -14,10 +14,15 @@ Primary modifier: `ctrl`
 | Close Window | `alt+f4` | `press_keys ["alt","f4"]` |
 | Refresh | `ctrl+r` or `f5` | `press_keys ["ctrl","r"]` |
 | Find | `ctrl+f` | `press_keys ["ctrl","f"]` |
+| Page Down / Scroll down | `space` | `press_keys ["space"]` |
+| Page Up / Scroll up | `shift+space` | `press_keys ["shift","space"]` |
+| Scroll to bottom | `ctrl+end` | `press_keys ["ctrl","end"]` |
+| Scroll to top | `ctrl+home` | `press_keys ["ctrl","home"]` |
 
 Notes:
 - Prefer shortcuts over clicking UI buttons.
 - Use `ctrl+l` for address bar even when it has no index.
+- **Scroll/page**: When focus is in a scrollable area, use `space` / `shift+space` for page down/up, or `ctrl+end` / `ctrl+home` to jump to bottom/top. Use **scroll_at_index** when you need to scroll a specific region by mouse position.
 
 ---
 

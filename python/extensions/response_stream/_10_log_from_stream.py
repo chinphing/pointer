@@ -42,11 +42,12 @@ class LogFromStream(Extension):
         # update log message
         log_item = loop_data.params_temporary["log_item_generating"]
 
-        # keep reasoning from previous logs in kvps
-        kvps = {}
+        # start from existing kvps so we keep keys set before streaming (e.g. snapshot from computer screen inject)
+        kvps = dict(log_item.kvps) if log_item.kvps else {}
+        # keep reasoning from previous logs in kvps (redundant if we copied above; explicit for clarity)
         if log_item.kvps is not None and "reasoning" in log_item.kvps:
             kvps["reasoning"] = log_item.kvps["reasoning"]
-        
+
         # step description for UI - using tool XY, writing Python code, etc.
         if parsed is not None and "tool_name" in parsed and parsed["tool_name"]:
             kvps["step"] = f"Using {parsed['tool_name']}..." # using tool XY

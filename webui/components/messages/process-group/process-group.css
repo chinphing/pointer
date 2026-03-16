@@ -431,6 +431,15 @@
   min-width: 0;
 }
 
+/* Step timestamp (mm:ss), full time in title on hover; left-aligned with spacing from title */
+.process-step-header .step-timestamp {
+  flex-shrink: 0;
+  margin-left: var(--spacing-sm, 0.5rem);
+  font-size: 0.7rem;
+  color: var(--color-text-muted, #888);
+  opacity: 0.85;
+}
+
 /* Step expand icon - CSS triangle (no Material Icons) */
 .process-step-header .step-expand-icon {
   display: inline-block;

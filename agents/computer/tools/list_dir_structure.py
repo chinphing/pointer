@@ -1,16 +1,21 @@
 """
 List directory structure (including subdirectories) for the Computer Agent.
 Use at the start of a subtask that involves a folder to get the full tree without exploring folder by folder.
+Uses breadth-first traversal: top-level dirs and files first, then next level, so the model sees shallow structure before deep paths.
 """
 from __future__ import annotations
 
 import os
-from typing import Any
+from collections import deque
+from typing import Any, List, Tuple
 
 from python.helpers.tool import Tool, Response
 
-MAX_DEPTH_DEFAULT = 20
-MAX_ENTRIES_DEFAULT = 1000
+MAX_ENTRIES_DEFAULT = 100
+
+TRUNCATE_HINT = (
+    "Too many entries; call again for specific deeper directories when you need details (e.g. list_dir_structure with a subdir path)."
+)
 
 
 def _norm_rel(path: str) -> str:
@@ -18,40 +23,66 @@ def _norm_rel(path: str) -> str:
     return path.replace("\\", "/")
 
 
-def _format_tree(root: str, max_depth: int, max_entries: int) -> str:
-    """Walk root and return one full relative path per line (find-style). Stops at max_depth and max_entries."""
+def _format_tree_bfs(root: str, max_entries: int) -> Tuple[str, bool]:
+    """
+    Breadth-first: list top-level dirs and files first, then each dir's contents level by level.
+    Returns (tree_text, truncated).
+    """
     root = os.path.normpath(os.path.abspath(root))
-    lines: list[str] = []
+    lines: List[str] = []
     count = 0
+    truncated = False
+    # (dir_abs_path, depth); depth 0 = root's direct children
+    queue: deque[Tuple[str, int]] = deque([(root, 0)])
 
-    for dirpath, dirnames, filenames in os.walk(root, topdown=True):
-        rel_dir = os.path.relpath(dirpath, root)
+    while queue and count < max_entries:
+        dir_abs, depth = queue.popleft()
+        rel_dir = os.path.relpath(dir_abs, root)
         if rel_dir == ".":
             rel_dir = ""
-        depth = rel_dir.count(os.sep) + (1 if rel_dir else 0)
-        if depth > max_depth:
-            dirnames.clear()
-            continue
         prefix = (rel_dir + os.sep) if rel_dir else ""
-        if rel_dir == "":
+        if depth == 0 and not rel_dir:
             lines.append(".")
             count += 1
-        if count >= max_entries:
-            lines.append("... (truncated by max_entries)")
-            return "\n".join(lines)
-        for d in sorted(dirnames):
+
+        try:
+            names = os.listdir(dir_abs)
+        except OSError:
+            continue
+        dirs_sorted: List[str] = []
+        files_sorted: List[str] = []
+        for name in names:
+            if name.startswith("."):
+                continue
+            full = os.path.join(dir_abs, name)
+            if os.path.isdir(full):
+                dirs_sorted.append(name)
+            else:
+                files_sorted.append(name)
+        dirs_sorted.sort()
+        files_sorted.sort()
+
+        for d in dirs_sorted:
             if count >= max_entries:
-                lines.append("... (truncated by max_entries)")
-                return "\n".join(lines)
+                truncated = True
+                break
             lines.append(_norm_rel(prefix + d + "/"))
             count += 1
-        for f in sorted(filenames):
+            queue.append((os.path.join(dir_abs, d), depth + 1))
+        if truncated:
+            break
+        for f in files_sorted:
             if count >= max_entries:
-                lines.append("... (truncated by max_entries)")
-                return "\n".join(lines)
+                truncated = True
+                break
             lines.append(_norm_rel(prefix + f))
             count += 1
-    return "\n".join(lines) if lines else "(empty)"
+        if truncated:
+            break
+
+    if truncated:
+        lines.append("... (truncated by max_entries)")
+    return ("\n".join(lines) if lines else "(empty)", truncated)
 
 
 class ListDirStructureTool(Tool):
@@ -78,16 +109,15 @@ class ListDirStructureTool(Tool):
             )
 
         try:
-            max_depth = int(args.get("max_depth") or MAX_DEPTH_DEFAULT)
-        except (TypeError, ValueError):
-            max_depth = MAX_DEPTH_DEFAULT
-        try:
             max_entries = int(args.get("max_entries") or MAX_ENTRIES_DEFAULT)
         except (TypeError, ValueError):
             max_entries = MAX_ENTRIES_DEFAULT
 
-        tree = _format_tree(path_abs, max_depth=max_depth, max_entries=max_entries)
+        tree, truncated = _format_tree_bfs(path_abs, max_entries=max_entries)
+        hint = ""
+        if truncated:
+            hint = f"\n\n**Hint:** {TRUNCATE_HINT}"
         return Response(
-            message=f"**Directory structure** (path={path_abs}, max_depth={max_depth}, max_entries={max_entries}):\n\n```\n{tree}\n```\n\nUse this to plan navigation or file selection without opening each subfolder.",
+            message=f"**Directory structure** (path={path_abs}, max_entries={max_entries}):\n\n```\n{tree}\n```\n\nUse this to plan navigation or file selection without opening each subfolder.{hint}",
             break_loop=False,
         )

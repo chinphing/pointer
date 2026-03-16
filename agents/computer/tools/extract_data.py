@@ -135,9 +135,9 @@ class ExtractDataTool(Tool):
                 message=f"extract_data supports 'extract' and 'load', got '{self.method}'.",
                 break_loop=False,
             )
-        if not getattr(self.agent.config.chat_model, "vision", False):
+        if not getattr(self.agent.config.utility_model, "vision", False):
             return Response(
-                message="Data extraction requires a vision-capable chat model. Enable chat_model_vision.",
+                message="Data extraction requires a vision-capable utility model. Enable utility_model_vision.",
                 break_loop=False,
             )
 
@@ -159,7 +159,7 @@ class ExtractDataTool(Tool):
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
         ]
         try:
-            response, _ = await self.agent.call_chat_model(
+            response, _ = await self.agent.call_utility_model(
                 messages=[
                     SystemMessage(content=system),
                     HumanMessage(content=user_content),

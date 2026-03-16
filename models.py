@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
+import json
 import logging
 import os
 from typing import (
@@ -289,6 +290,22 @@ def apply_rate_limiter_sync(
     )
 
 
+def _ensure_extra_body_dict(kwargs: dict) -> None:
+    """LiteLLM expects extra_body to be a dict; parse from str or remove if invalid."""
+    if "extra_body" not in kwargs:
+        return
+    v = kwargs["extra_body"]
+    if isinstance(v, dict):
+        return
+    if isinstance(v, str):
+        try:
+            kwargs["extra_body"] = json.loads(v)
+        except (ValueError, TypeError, json.JSONDecodeError):
+            del kwargs["extra_body"]
+        return
+    del kwargs["extra_body"]
+
+
 class LiteLLMChatWrapper(SimpleChatModel):
     model_name: str
     provider: str
@@ -388,8 +405,10 @@ class LiteLLMChatWrapper(SimpleChatModel):
         apply_rate_limiter_sync(self.a0_model_conf, str(msgs))
 
         # Call the model
+        call_kw = {**self.kwargs, **kwargs}
+        _ensure_extra_body_dict(call_kw)
         resp = completion(
-            model=self.model_name, messages=msgs, stop=stop, **{**self.kwargs, **kwargs}
+            model=self.model_name, messages=msgs, stop=stop, **call_kw
         )
 
         # Parse output
@@ -413,12 +432,14 @@ class LiteLLMChatWrapper(SimpleChatModel):
 
         result = ChatGenerationResult()
 
+        stream_kw = {**self.kwargs, **kwargs}
+        _ensure_extra_body_dict(stream_kw)
         for chunk in completion(
             model=self.model_name,
             messages=msgs,
             stream=True,
             stop=stop,
-            **{**self.kwargs, **kwargs},
+            **stream_kw,
         ):
             # parse chunk
             parsed = _parse_chunk(chunk) # chunk parsing
@@ -444,12 +465,14 @@ class LiteLLMChatWrapper(SimpleChatModel):
 
         result = ChatGenerationResult()
 
+        astream_kw = {**self.kwargs, **kwargs}
+        _ensure_extra_body_dict(astream_kw)
         response = await acompletion(
             model=self.model_name,
             messages=msgs,
             stream=True,
             stop=stop,
-            **{**self.kwargs, **kwargs},
+            **astream_kw,
         )
         async for chunk in response:  # type: ignore
             # parse chunk
@@ -497,6 +520,7 @@ class LiteLLMChatWrapper(SimpleChatModel):
 
         # Prepare call kwargs and retry config (strip A0-only params before calling LiteLLM)
         call_kwargs: dict[str, Any] = {**self.kwargs, **kwargs}
+        _ensure_extra_body_dict(call_kwargs)
         max_retries: int = int(call_kwargs.pop("a0_retry_attempts", 2))
         retry_delay_s: float = float(call_kwargs.pop("a0_retry_delay_seconds", 1.5))
         stream = reasoning_callback is not None or response_callback is not None or tokens_callback is not None
@@ -631,6 +655,7 @@ class BrowserCompatibleChatWrapper(ChatOpenRouter):
         try:
             model = kwargs.pop("model", None)
             kwrgs = {**self._wrapper.kwargs, **kwargs}
+            _ensure_extra_body_dict(kwrgs)
 
             # hack from browser-use to fix json schema for gemini (additionalProperties, $defs, $ref)
             if "response_format" in kwrgs and "json_schema" in kwrgs["response_format"] and model.startswith("gemini/"):

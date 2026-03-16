@@ -71,6 +71,32 @@ export function getUserTimezone() {
 }
 
 /**
+ * Format a timestamp for step display: short = "mm:ss", full = local datetime for title.
+ * Accepts Unix seconds (number), milliseconds (number), or ISO date string.
+ * @param {number|string} ts - Unix timestamp in seconds, or ms number, or ISO string
+ * @returns {{ short: string, full: string }}
+ */
+export function formatStepTimestamp(ts) {
+  if (ts == null) return { short: '', full: '' };
+  let date;
+  if (typeof ts === 'number') {
+    date = ts < 1e12 ? new Date(ts * 1000) : new Date(ts);
+  } else if (typeof ts === 'string') {
+    const n = Number(ts);
+    if (!Number.isNaN(n)) date = n < 1e12 ? new Date(n * 1000) : new Date(n);
+    else date = new Date(ts);
+  } else {
+    return { short: '', full: '' };
+  }
+  if (Number.isNaN(date.getTime())) return { short: '', full: '' };
+  const mins = date.getMinutes();
+  const secs = date.getSeconds();
+  const short = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  const full = date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'medium' });
+  return { short, full };
+}
+
+/**
  * Format a duration in milliseconds to a human-readable string
  * @param {number} durationMs - Duration in milliseconds
  * @returns {string} Formatted duration (e.g., '45s', '2m30s')

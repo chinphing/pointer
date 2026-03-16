@@ -14,10 +14,15 @@ Primary modifier: `command`
 | Close Window | `command+w` | `press_keys ["command","w"]` |
 | Refresh | `command+r` | `press_keys ["command","r"]` |
 | Find | `command+f` | `press_keys ["command","f"]` |
+| Page Down / Scroll down | `space` | `press_keys ["space"]` |
+| Page Up / Scroll up | `shift+space` | `press_keys ["shift","space"]` |
+| Scroll to bottom | `command+down` | `press_keys ["command","down"]` |
+| Scroll to top | `command+up` | `press_keys ["command","up"]` |
 
 Notes:
 - Prefer shortcuts over clicking UI buttons.
 - Use `command+l` for address bar even when it has no index.
+- **Scroll/page**: When the focus is already in a scrollable area (e.g. document, list, or page), use `space` / `shift+space` for page down/up, or `command+down` / `command+up` to jump to bottom/top. Use **scroll_at_index** when you need to scroll a specific region by mouse position.
 
 ---
 

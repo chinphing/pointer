@@ -1,3 +1,5 @@
+import json
+
 from agent import AgentConfig
 import models
 from python.helpers import runtime, settings, defer
@@ -10,19 +12,24 @@ def initialize_agent(override_settings: dict | None = None):
         current_settings = settings.merge_settings(current_settings, override_settings)
 
     def _normalize_model_kwargs(kwargs: dict) -> dict:
-        # convert string values that represent valid Python numbers to numeric types
+        # Normalize: numbers from strings, JSON strings -> dict/list (e.g. extra_body).
         result = {}
         for key, value in kwargs.items():
             if isinstance(value, str):
-                # try to convert string to number if it's a valid Python number
-                try:
-                    # try int first, then float
-                    result[key] = int(value)
-                except ValueError:
+                stripped = value.strip()
+                if stripped.startswith("{") or stripped.startswith("["):
                     try:
-                        result[key] = float(value)
-                    except ValueError:
+                        result[key] = json.loads(value)
+                    except (ValueError, TypeError):
                         result[key] = value
+                else:
+                    try:
+                        result[key] = int(value)
+                    except ValueError:
+                        try:
+                            result[key] = float(value)
+                        except ValueError:
+                            result[key] = value
             else:
                 result[key] = value
         return result

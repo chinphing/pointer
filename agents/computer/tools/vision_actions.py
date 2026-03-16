@@ -25,7 +25,17 @@ from coord_convert import normalized_to_screen  # noqa: E402
 
 
 LAST_VISION_ACTION_KEY = "computer_last_vision_action"
-SCROLL_READY_FOR_CURRENT_KEY = "computer_scroll_ready_for_scroll_at_current"
+
+# Scroll amount: valid range 1–10 (up) or -10–-1 (down); typically use 10 or -10
+SCROLL_AMOUNT_MIN, SCROLL_AMOUNT_MAX = 1, 10
+
+
+def _clamp_scroll_amount(amount: int) -> int:
+    """Clamp scroll amount to [1, 10] or [-10, -1]."""
+    if amount > 0:
+        return max(SCROLL_AMOUNT_MIN, min(SCROLL_AMOUNT_MAX, amount))
+    return min(-SCROLL_AMOUNT_MIN, max(-SCROLL_AMOUNT_MAX, amount))
+
 
 COORD_METHODS = ("click_at", "double_click_at", "right_click_at", "hover_at", "type_text_at")
 
@@ -81,8 +91,6 @@ class VisionActionsTool(Tool):
                 "result": (response.message or "").strip(),
             },
         )
-        if method not in ("scroll_at_index", "scroll_at_current"):
-            self.agent.set_data(SCROLL_READY_FOR_CURRENT_KEY, False)
         time.sleep(0.3)
         await super().after_execution(response, **kwargs)
 
@@ -273,11 +281,7 @@ class VisionActionsTool(Tool):
             return Response(message=f"Invalid 'amount' value: {amount_arg}.", break_loop=False)
         if amount == 0:
             return Response(message="Amount cannot be 0.", break_loop=False)
-        if not self.agent.get_data(SCROLL_READY_FOR_CURRENT_KEY):
-            return Response(
-                message="Use scroll_at_index first to position and scroll in the target area. Only after a successful scroll_at_index (scroll effect: screen content **changed**) can you use scroll_at_current for subsequent scrolls.",
-                break_loop=False,
-            )
+        amount = _clamp_scroll_amount(amount)
         try:
             result_msg, screen_changed = actions._scroll(amount)
         except Exception as e:
@@ -461,14 +465,11 @@ class VisionActionsTool(Tool):
             return Response(message=f"Invalid 'amount' value: {amount_arg}.", break_loop=False)
         if amount == 0:
             return Response(message="Amount cannot be 0.", break_loop=False)
+        amount = _clamp_scroll_amount(amount)
         try:
             result_msg, screen_changed = actions._scroll_at(pos, amount)
         except Exception as e:
             return Response(message=str(e), break_loop=False)
-        if screen_changed is True:
-            self.agent.set_data(SCROLL_READY_FOR_CURRENT_KEY, True)
-        elif screen_changed is False:
-            self.agent.set_data(SCROLL_READY_FOR_CURRENT_KEY, False)
         scroll_effect = ""
         if screen_changed is not None:
             scroll_effect = " " + _scroll_effect_message_from_changed(screen_changed)

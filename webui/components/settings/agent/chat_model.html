@@ -148,11 +148,11 @@
             <div class="field-label">
               <div class="field-title">Chat model additional parameters</div>
               <div class="field-description">
-                Any other parameters supported by <a href='https://docs.litellm.ai/docs/set_keys' target='_blank'>LiteLLM</a>. Format is KEY=VALUE on individual lines, like .env file. Value can also contain JSON objects - when unquoted, it is treated as object, number etc., when quoted, it is treated as string.
+                One <code>KEY=VALUE</code> per line (like .env). Value can be JSON; use lowercase <code>true</code>/<code>false</code>. Example: <code>extra_body={"enable_thinking": true, "thinking_budget": 1024}</code>. See <a href='https://docs.litellm.ai/docs/set_keys' target='_blank'>LiteLLM</a> and your provider docs.
               </div>
             </div>
             <div class="field-control">
-              <textarea x-model="$store.settings.settings.chat_model_kwargs"></textarea>
+              <textarea x-model="$store.settings.settings.chat_model_kwargs" placeholder='extra_body={"enable_thinking": true, "thinking_budget": 1024}'></textarea>
             </div>
           </div>
         </div>

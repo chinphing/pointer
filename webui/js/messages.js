@@ -10,7 +10,7 @@ import {
 } from "/components/messages/action-buttons/simple-action-buttons.js";
 import { store as stepDetailStore } from "/components/modals/process-step-detail/step-detail-store.js";
 import { store as preferencesStore } from "/components/sidebar/bottom/preferences/preferences-store.js";
-import { formatDuration } from "./time-utils.js";
+import { formatDuration, formatStepTimestamp } from "./time-utils.js";
 import { Scroller } from "./scroller.js";
 
 // Delay before collapsing previous steps when a new step is added
@@ -270,7 +270,7 @@ function drawProcessStep({
   if (
     isNewStep &&
     !group.hasAttribute("data-start-timestamp") &&
-    log.timestamp
+    log?.timestamp != null
   ) {
     group.setAttribute("data-start-timestamp", String(log.timestamp));
   }
@@ -282,15 +282,15 @@ function drawProcessStep({
     step.classList.add("process-step");
 
     // set data attributes of the step
-    step.setAttribute("data-log-type", log.type);
+    step.setAttribute("data-log-type", log?.type ?? "");
     step.setAttribute("data-step-id", id);
-    step.setAttribute("data-agent-number", log.agentno);
+    step.setAttribute("data-agent-number", String(log?.agentno ?? 0));
 
     // set timestamp attribute (convert to milliseconds for duration calculation)
-    if (log.timestamp) {
+    if (log.timestamp != null) {
       step.setAttribute(
         "data-timestamp",
-        String(Math.round(log.timestamp * 1000)),
+        String(Math.round(Number(log.timestamp) * 1000)),
       );
     }
 
@@ -402,6 +402,28 @@ function drawProcessStep({
   // header row - title
   const titleEl = ensureChild(stepHeader, ".step-title", "span", "step-title");
   titleEl.textContent = title;
+
+  // header row - timestamp (mm:ss by default, full datetime on hover)
+  const timeEl = ensureChild(stepHeader, ".step-timestamp", "span", "step-timestamp");
+  const ts =
+    log?.timestamp != null
+      ? log.timestamp
+      : (() => {
+          const dataMs = step.getAttribute("data-timestamp");
+          if (dataMs == null || dataMs === "") return null;
+          const ms = Number(dataMs);
+          return Number.isFinite(ms) ? ms / 1000 : null;
+        })();
+  if (ts != null) {
+    const { short, full } = formatStepTimestamp(ts);
+    timeEl.textContent = short;
+    timeEl.title = full;
+    timeEl.style.display = "";
+  } else {
+    timeEl.textContent = "";
+    timeEl.title = "";
+    timeEl.style.display = "none";
+  }
 
   // auto-scroller of the step detail
   const detailScroller = new Scroller(stepDetailScroll, {

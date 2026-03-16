@@ -7,11 +7,9 @@ Only the latest screen inject is sent to the LLM; earlier ones are replaced with
 """
 from __future__ import annotations
 
-import hashlib
 import locale
 import os
 import platform
-import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -39,77 +37,6 @@ import os_prompts  # noqa: E402
 
 # nearest neighbor count
 NEAREST_NEIGHBOR_COUNT = 10
-
-# Region keywords: (name, (x_frac_start, y_frac_start, x_frac_end, y_frac_end))
-# Center is middle 50%×50%; quadrants are half-width, half-height.
-# Key order matters for regex: 上方/下方/顶部/底部/top/bottom before 中央 so they match first.
-QUADRANT_MAP = {
-    "上方": (0, 0, 1, 0.5),
-    "下方": (0, 0.5, 1, 1),
-    "顶部": (0, 0, 1, 0.5),
-    "底部": (0, 0.5, 1, 1),
-    "top": (0, 0, 1, 0.5),
-    "bottom": (0, 0.5, 1, 1),
-    "top_left": (0, 0, 0.5, 0.5),
-    "top-right": (0.5, 0, 1, 0.5),
-    "top_right": (0.5, 0, 1, 0.5),
-    "bottom_right": (0.5, 0.5, 1, 1),
-    "bottom-right": (0.5, 0.5, 1, 1),
-    "bottom_left": (0, 0.5, 0.5, 1),
-    "bottom-left": (0, 0.5, 0.5, 1),
-    "left": (0, 0, 0.5, 1),
-    "right": (0.5, 0, 1, 1),
-    "左上": (0, 0, 0.5, 0.5),
-    "右上": (0.5, 0, 1, 0.5),
-    "右下": (0.5, 0.5, 1, 1),
-    "左下": (0, 0.5, 0.5, 1),
-    "左侧": (0, 0, 0.5, 1),
-    "右侧": (0.5, 0, 1, 1),
-    "center": (0.25, 0.25, 0.75, 0.75),
-    "central": (0.25, 0.25, 0.75, 0.75),
-    "centre": (0.25, 0.25, 0.75, 0.75),
-    "中央": (0.25, 0.25, 0.75, 0.75),
-    "中间": (0.25, 0.25, 0.75, 0.75),
-}
-
-QUADRANT_PATTERN = re.compile(
-    "|".join(re.escape(k) for k in QUADRANT_MAP.keys()), re.I
-)
-
-
-def _image_hash(pil_img: Image.Image, size: int = 64) -> str:
-    """Compute a stable hash of the image for before/after comparison (e.g. after scroll)."""
-    gray = pil_img.convert("L").resize((size, size), Image.Resampling.LANCZOS)
-    return hashlib.md5(gray.tobytes()).hexdigest()
-
-
-def _detect_quadrant_hint(text: str) -> Optional[str]:
-    """Return first matching quadrant key from text, or None."""
-    if not text:
-        return None
-    m = QUADRANT_PATTERN.search(text)
-    if m:
-        return m.group(0).lower().replace("-", "_")
-    return None
-
-
-def _crop_quadrant_2x(pil_img: Image.Image, quadrant_key: str) -> Optional[Image.Image]:
-    """Crop the quadrant region and resize to 2x. Returns None if key unknown."""
-    if quadrant_key not in QUADRANT_MAP:
-        return None
-    x0, y0, x1, y1 = QUADRANT_MAP[quadrant_key]
-    w, h = pil_img.size
-    box = (
-        int(x0 * w),
-        int(y0 * h),
-        int(x1 * w),
-        int(y1 * h),
-    )
-    crop = pil_img.crop(box)
-    new_w = crop.width * 2
-    new_h = crop.height * 2
-    return crop.resize((new_w, new_h), Image.Resampling.LANCZOS)
-
 
 # Crop size (px) around mouse; output is this size * MOUSE_ZOOM_SCALE
 MOUSE_ZOOM_CROP_SIZE = 300
@@ -330,7 +257,6 @@ class ComputerScreenInject(Extension):
             _replace_older_screen_injects_with_placeholder(loop_data.history_output, keep_last=False)
             return
 
-        current_screen_hash = _image_hash(img)
         mon_left, mon_top, mon_width, mon_height = mon_bbox
         w, h = img.size
 
@@ -488,7 +414,7 @@ class ComputerScreenInject(Extension):
             "How to read the annotated image: each interactive element is wrapped in a colored box; "
             "the index number is shown in a small same-color label that may be above, below, to the left, or to the right of the box. "
             "Use the same color and proximity (position next to the box) to match the correct index to the target element. "
-            "When multiple boxes could match the same target (e.g. a button inside a larger container), prefer the index whose bbox tightly wraps the target (smallest fit) for precise positioning; avoid the index of a larger bbox that merely contains it."
+            "When multiple boxes could match the same target (e.g. a button inside a larger container), prefer the index whose bbox tightly wraps the target (smallest fit) for precise positioning; avoid the index of a larger bbox that merely contains it. For file items in a list or file picker, prefer the index that wraps the file name (the visible filename text), not the file icon or the whole row."
         )
         n_total = len(index_map)
         content = []
@@ -576,18 +502,9 @@ class ComputerScreenInject(Extension):
         context_id = getattr(self.agent.context, "id", None) or "default"
         saved_paths = _save_snapshots(context_id, img, annotated_img, zoomed_imgs_to_save)
 
-        # In development mode, attach snapshot link to the last GEN log item
+        # Pass snapshot path to before_main_llm_call so it can attach to this turn's agent log (not the previous one)
         if runtime.is_development() and saved_paths.get("annotated"):
-            # Find the last agent log item and add snapshot link
-            logs = self.agent.context.log.logs
-            for log_item in reversed(logs):
-                if hasattr(log_item, 'type') and log_item.type == "agent":
-                    # Get existing kvps or create new
-                    existing_kvps = dict(log_item.kvps) if log_item.kvps else {}
-                    existing_kvps["snapshot"] = saved_paths["annotated"]
-                    # Use update method to trigger state change notification
-                    log_item.update(kvps=existing_kvps)
-                    break
+            loop_data.params_temporary["computer_snapshot_annotated"] = saved_paths["annotated"]
 
         # Inject as separate messages so history can selectively keep/discard
         # All contents are now properly formatted as lists for LangChain compatibility
@@ -610,4 +527,3 @@ class ComputerScreenInject(Extension):
             loop_data.history_output.append(history.OutputMessage(ai=False, content=zoomed_msg))
 
         _replace_older_screen_injects_with_placeholder(loop_data.history_output)
-        self.agent.set_data("computer_last_screen_hash", current_screen_hash)

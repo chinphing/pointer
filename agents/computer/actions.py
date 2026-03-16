@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import time
 from typing import List, Optional, Tuple
 
@@ -12,6 +11,8 @@ from PIL import Image
 
 import logging
 
+from scroll_heatmap import _image_hash
+
 try:
     import screen as _screen_mod
 except ImportError:
@@ -19,12 +20,6 @@ except ImportError:
 
 # Side length (pixels) of the square region around the mouse used to judge scroll effect; avoids dynamic content elsewhere.
 SCROLL_COMPARE_CROP_SIZE = 500
-
-
-def _image_hash(pil_img: Image.Image, size: int = 64) -> str:
-    """Stable hash for before/after scroll comparison (avoids hover/tooltip noise)."""
-    gray = pil_img.convert("L").resize((size, size), Image.Resampling.LANCZOS)
-    return hashlib.md5(gray.tobytes()).hexdigest()
 
 
 def _crop_around_mouse(

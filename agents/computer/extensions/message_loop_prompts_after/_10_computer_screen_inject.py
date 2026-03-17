@@ -1,7 +1,7 @@
 """
 Inject current screen images into the prompt for the computer profile.
 Image order: (1) raw screenshot, (2) annotated image with indices, (3) zoom: 300px region around mouse, 3× magnification.
-Uses predict_and_annotate_all for detection; builds index_map (screen coordinates) for vision_actions tools.
+Uses predict_and_annotate_all for detection; builds index_map (screen coordinates) for vision tools (mouse, hotkey, modified_click, composite_action, wait).
 Saves images under agents/computer/snapshots/<context_id>/.
 Only the latest screen inject is sent to the LLM; earlier ones are replaced with a text placeholder to reduce token usage.
 """
@@ -387,7 +387,7 @@ class ComputerScreenInject(Extension):
         last_action = self.agent.data.get("computer_last_vision_action")
         last_goal = self.agent.data.get("computer_last_goal") or ""
 
-        # Scroll effect is now returned in the tool response (before/after hash comparison in vision_actions), not here.
+        # Scroll effect is now returned in the tool response (before/after hash comparison in vision tools), not here.
 
         # Track consecutive failures - increment if same goal repeated
         failure_count = self.agent.data.get("computer_action_failure_count") or 0
@@ -497,7 +497,7 @@ class ComputerScreenInject(Extension):
             },
         ]
         
-        # 3. Annotated screenshot (indices for vision_actions)
+        # 3. Annotated screenshot (indices for vision tools)
         b64_annotated = _pil_to_base64_jpeg(annotated_img)
         annotated_img_content: List[Dict[str, Any]] = [
             {"type": "text", "text": "[Screen annotated]"},

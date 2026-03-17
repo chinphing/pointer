@@ -870,6 +870,11 @@ class Agent:
             # Split raw_tool_name into tool_name and tool_method if applicable
             if ":" in raw_tool_name:
                 tool_name, tool_method = raw_tool_name.split(":", 1)
+            # If method was not in tool_name, accept method from tool_args (e.g. <method>type_text_at_index</method>)
+            if tool_method is None and isinstance(tool_args, dict):
+                method_from_args = tool_args.get("method")
+                if method_from_args and isinstance(method_from_args, str):
+                    tool_method = method_from_args.strip()
 
             tool = None  # Initialize tool to None
 

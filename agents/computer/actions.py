@@ -112,6 +112,26 @@ class ActionTools:
             time.sleep(0.1)
         self.last_action = {"tool": "click_add_to_selection_batch", "tool_input": {"positions_count": len(positions)}}
 
+    def _click_range_selection(self, first_position: List[int], last_position: List[int]) -> None:
+        """Click first position, then Shift+click last position to select range from first to last."""
+        if not first_position or not last_position:
+            return
+        self._check_stop()
+        if not self.dry_run:
+            self.mouse.position = (first_position[0], first_position[1])
+            time.sleep(0.05)
+            self.mouse.click(Button.left)
+            time.sleep(0.08)
+            pyautogui.keyDown("shift")
+            time.sleep(0.05)
+            self.mouse.position = (last_position[0], last_position[1])
+            time.sleep(0.05)
+            self.mouse.click(Button.left)
+            time.sleep(0.08)
+            pyautogui.keyUp("shift")
+            time.sleep(0.1)
+        self.last_action = {"tool": "click_range_selection", "tool_input": {"first": first_position, "last": last_position}}
+
     def _double_click(self, position: List[int]) -> str:
         self._check_stop()
         if not self.dry_run:

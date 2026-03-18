@@ -1528,10 +1528,16 @@ function drawKvpsIncremental(container, kvps, latex) {
 
     // Get all current rows for comparison
     let existingRows = table.querySelectorAll(".kvps-row");
-    // Filter  reasoning and snapshot (snapshot is handled separately, plans is handled with markdown)
-    const kvpEntries = Object.entries(kvps).filter(
-      ([key]) => key !== "reasoning" && key !== "snapshot",
-    );
+    // Filter reasoning, snapshot; hide plans row when plans is empty
+    const kvpEntries = Object.entries(kvps).filter(([key, value]) => {
+      if (key === "reasoning" || key === "snapshot") return false;
+      if (key === "plans" || key === "Plans") {
+        if (value == null) return false;
+        if (Array.isArray(value) && value.length === 0) return false;
+        if (typeof value === "string" && value.trim() === "") return false;
+      }
+      return true;
+    });
 
     // Update or create rows as needed
     kvpEntries.forEach(([key, value], index) => {

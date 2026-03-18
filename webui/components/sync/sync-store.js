@@ -492,33 +492,12 @@ const model = {
     }
 
     if (data.snapshot && typeof data.snapshot === "object") {
-      const result = await applySnapshot(data.snapshot, {
+      await applySnapshot(data.snapshot, {
         onLogGuidReset: async () => {
           debug("[syncStore] log_guid reset -> resync (forceFull)");
           await this.sendStateRequest({ forceFull: true });
         },
       });
-      if (result && result.logGap) {
-        const now = Date.now();
-        if (now - this._lastLogGapResyncAtMs >= this._logGapResyncCooldownMs) {
-          this._lastLogGapResyncAtMs = now;
-          debug("[syncStore] log gap detected (missed push) -> resync (forceFull)");
-          await this.sendStateRequest({ forceFull: true });
-        } else {
-          debug("[syncStore] log gap detected but resync skipped (cooldown)");
-        }
-      } else if (result && result.progressJustEnded) {
-        debug("[syncStore] message loop ended -> refetch to show final response");
-        // Defer so the snapshot we just applied paints first; avoids double render jank
-        const sync = this;
-        setTimeout(() => {
-          if (typeof sync.sendStateRequest === "function") {
-            sync.sendStateRequest({ forceFull: true }).catch((err) => {
-              console.error("[syncStore] progressJustEnded refetch failed", err);
-            });
-          }
-        }, 80);
-      }
       this._setMode(SYNC_MODES.HEALTHY, "push applied");
       await this._flushPendingReconnectToast();
     }

@@ -1,0 +1,89 @@
+<html>
+  <head>
+    <title>CAPTCHA / DaTi</title>
+  </head>
+
+  <body>
+    <div x-data>
+      <template x-if="$store.settings.settings">
+        <div>
+          <div class="section-title">CAPTCHA / DaTi</div>
+          <div class="section-description">
+            DaTi CAPTCHA API settings for the captcha_verify tool (ComputerUse profile). Used when solving input, click, or drag CAPTCHAs.
+          </div>
+
+          <div class="field">
+            <div class="field-label">
+              <div class="field-title">DaTi API URL</div>
+              <div class="field-description">Base URL for the DaTi CAPTCHA API. Leave empty to use default (e.g. https://api.laladama.com).</div>
+            </div>
+            <div class="field-control">
+              <input type="text" x-model="$store.settings.settings.dati_api_url" placeholder="https://api.laladama.com" />
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="field-label">
+              <div class="field-title">Authcode</div>
+              <div class="field-description">Authentication code for the DaTi service.</div>
+            </div>
+            <div class="field-control">
+              <input type="password" x-model="$store.settings.settings.dati_authcode" autocomplete="off" />
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="field-label">
+              <div class="field-title">Typeno</div>
+              <div class="field-description">CAPTCHA type identifier for the DaTi API.</div>
+            </div>
+            <div class="field-control">
+              <input type="text" x-model="$store.settings.settings.dati_typeno" />
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="field-label">
+              <div class="field-title">Author</div>
+              <div class="field-description">Author or account identifier (optional).</div>
+            </div>
+            <div class="field-control">
+              <input type="text" x-model="$store.settings.settings.dati_author" />
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="field-label">
+              <div class="field-title">Slider drag offset (px)</div>
+              <div class="field-description">When drag is used with is_slider=true, this many pixels are added to the target x-coordinate. Default 10.</div>
+            </div>
+            <div class="field-control">
+              <input type="number" min="0" max="100" step="1" x-model.number="$store.settings.settings.captcha_slider_offset_px" />
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="field-label">
+              <div class="field-title">Auto-refresh screenshot</div>
+              <div class="field-description">When enabled, the right-panel screenshot refreshes at the interval below. When disabled, it only updates when the agent takes a new screenshot.</div>
+            </div>
+            <div class="field-control">
+              <input type="checkbox" x-model="$store.settings.settings.computer_screen_preview_auto_refresh" />
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="field-label">
+              <div class="field-title">Screenshot preview interval (seconds)</div>
+              <div class="field-description">How often the right-panel screenshot refreshes when auto-refresh is on. Default 5.</div>
+            </div>
+            <div class="field-control">
+              <input type="number" min="1" max="60" step="1" x-model.number="$store.settings.settings.computer_screen_preview_interval_sec" />
+            </div>
+          </div>
+
+        </div>
+      </template>
+    </div>
+  </body>
+</html>

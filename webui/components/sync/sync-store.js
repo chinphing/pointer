@@ -481,12 +481,19 @@ const model = {
     }
 
     if (data.snapshot && typeof data.snapshot === "object") {
-      await applySnapshot(data.snapshot, {
+      const result = await applySnapshot(data.snapshot, {
         onLogGuidReset: async () => {
           debug("[syncStore] log_guid reset -> resync (forceFull)");
           await this.sendStateRequest({ forceFull: true });
         },
       });
+      if (result && result.logGap) {
+        debug("[syncStore] log gap detected (missed push) -> resync (forceFull)");
+        await this.sendStateRequest({ forceFull: true });
+      } else if (result && result.progressJustEnded) {
+        debug("[syncStore] message loop ended -> refetch to show final response");
+        await this.sendStateRequest({ forceFull: true });
+      }
       this._setMode(SYNC_MODES.HEALTHY, "push applied");
       await this._flushPendingReconnectToast();
     }

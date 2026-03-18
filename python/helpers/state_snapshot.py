@@ -38,6 +38,11 @@ class SnapshotV1(TypedDict):
     computer_screen_raw: str
     # Optional: mouse position in screenshot image coords [x, y] for cursor overlay
     computer_screen_mouse: NotRequired[list[float] | None]
+    # True when selected context is computer profile (so frontend can keep last screenshot on session end)
+    context_is_computer: NotRequired[bool]
+    # Right-panel screenshot refresh: enabled and interval (seconds)
+    computer_screen_preview_auto_refresh: NotRequired[bool]
+    computer_screen_preview_interval_sec: NotRequired[int]
 
 @dataclass(frozen=True)
 class StateRequestV1:
@@ -243,29 +248,92 @@ def _capture_screen_as_base64() -> tuple[str | None, list[float] | None]:
         return (None, None)
 
 
+def _capture_screen_as_jpeg_base64(quality: int = 85) -> tuple[str | None, list[float] | None]:
+    """Capture current monitor as JPEG base64 and mouse position. Smaller than PNG for bandwidth."""
+    jpeg_bytes, mouse_xy = _capture_screen_as_jpeg_bytes(quality)
+    if jpeg_bytes is None:
+        return (None, mouse_xy)
+    return (base64.b64encode(jpeg_bytes).decode("ascii"), mouse_xy)
+
+
+def _capture_screen_as_jpeg_bytes(quality: int = 85) -> tuple[bytes | None, list[float] | None]:
+    """Capture current monitor as raw JPEG bytes and mouse position. For binary response (no base64)."""
+    try:
+        _root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        _computer_dir = os.path.join(_root, "agents", "computer")
+        if _computer_dir not in sys.path:
+            sys.path.insert(0, _computer_dir)
+        import screen as _screen_mod  # noqa: E402  # type: ignore[import-not-found]
+        _img, _bbox = _screen_mod.screenshot_current_monitor()
+        if _img.mode in ("RGBA", "P"):
+            _img = _img.convert("RGB")
+        _buf = BytesIO()
+        _img.save(_buf, format="JPEG", quality=min(100, max(1, quality)))
+        mouse_xy: list[float] | None = None
+        try:
+            import pyautogui  # noqa: E402
+            mx, my = pyautogui.position()
+            mouse_xy = [float(mx - _bbox[0]), float(my - _bbox[1])]
+        except Exception:
+            pass
+        return (_buf.getvalue(), mouse_xy)
+    except Exception:
+        return (None, None)
+
+
+def get_fresh_computer_screen_preview() -> dict[str, Any]:
+    """Capture current monitor as JPEG data URL and mouse position. For right-panel periodic refresh (smaller than PNG)."""
+    b64, mouse_xy = _capture_screen_as_jpeg_base64()
+    data_url = ("data:image/jpeg;base64," + b64) if b64 else ""
+    return {
+        "computer_screen_raw": data_url,
+        "computer_screen_mouse": mouse_xy,
+    }
+
+
+def get_fresh_computer_screen_preview_binary() -> tuple[bytes | None, list[float] | None]:
+    """Capture current monitor as raw JPEG bytes and mouse position. For API returning image/jpeg body + mouse in header."""
+    return _capture_screen_as_jpeg_bytes()
+
+
 def _computer_screen_raw_for_snapshot(active_context: Any) -> tuple[str, list[float] | None]:
-    """Return (data URL, mouse_xy) for computer_screen_raw. Reused for chat and welcome page."""
+    """Return (data URL, mouse_xy) for computer_screen_raw.
+    - Session running (progress_active): use inject data or capture.
+    - Session not running (opened computer chat or session ended): use cached last frame, or capture once at session start.
+    """
     data_url = ""
     mouse_xy: list[float] | None = None
-    if active_context:
-        agent = active_context.get_agent()
-        if agent and getattr(agent.config, "profile", "") == "computer":
-            b64 = agent.get_data("computer_screen_raw_base64")
-            if not b64:
-                b64, mouse_xy = _capture_screen_as_base64()
-                if b64:
-                    agent.set_data("computer_screen_raw_base64", b64)
-            else:
-                mouse_xy = agent.get_data("computer_screen_mouse_xy")
-                if isinstance(mouse_xy, (list, tuple)) and len(mouse_xy) >= 2:
-                    mouse_xy = [float(mouse_xy[0]), float(mouse_xy[1])]
-                else:
-                    mouse_xy = None
-            if b64:
-                data_url = "data:image/png;base64," + b64
+    if not active_context:
         return (data_url, mouse_xy)
-    # Welcome page (no context): still show a screenshot for consistent UI
-    b64, mouse_xy = _capture_screen_as_base64()
+    agent = active_context.get_agent()
+    if not agent or getattr(agent.config, "profile", "") != "computer":
+        return (data_url, mouse_xy)
+    progress_active = bool(getattr(active_context.log, "progress_active", False))
+    b64 = agent.get_data("computer_screen_raw_base64")
+    if progress_active:
+        # Message loop running: use inject-set data or capture if not set yet.
+        if not b64:
+            b64, mouse_xy = _capture_screen_as_base64()
+            if b64:
+                agent.set_data("computer_screen_raw_base64", b64)
+        else:
+            mouse_xy = agent.get_data("computer_screen_mouse_xy")
+            if isinstance(mouse_xy, (list, tuple)) and len(mouse_xy) >= 2:
+                mouse_xy = [float(mouse_xy[0]), float(mouse_xy[1])]
+            else:
+                mouse_xy = None
+    else:
+        # Session start (no frame yet) or session end (keep last): use cached frame or capture once.
+        if not b64:
+            b64, mouse_xy = _capture_screen_as_base64()
+            if b64:
+                agent.set_data("computer_screen_raw_base64", b64)
+        else:
+            mouse_xy = agent.get_data("computer_screen_mouse_xy")
+            if isinstance(mouse_xy, (list, tuple)) and len(mouse_xy) >= 2:
+                mouse_xy = [float(mouse_xy[0]), float(mouse_xy[1])]
+            else:
+                mouse_xy = None
     if b64:
         data_url = "data:image/png;base64," + b64
     return (data_url, mouse_xy)
@@ -345,6 +413,16 @@ async def build_snapshot_from_request(*, request: StateRequestV1) -> SnapshotV1:
 
     computer_screen_raw, computer_screen_mouse = _computer_screen_raw_for_snapshot(active_context)
 
+    from python.helpers import settings as _settings_mod
+    _current = _settings_mod.get_settings()
+    _auto_refresh = bool(_current.get("computer_screen_preview_auto_refresh", True))
+    _interval_sec = max(1, int(_current.get("computer_screen_preview_interval_sec") or 5))
+
+    _agent = active_context.get_agent() if active_context else None
+    _context_is_computer = bool(
+        _agent and getattr(_agent.config, "profile", "") == "computer"
+    )
+
     snapshot: SnapshotV1 = {
         "deselect_chat": bool(ctxid) and active_context is None,
         "context": active_context.id if active_context else "",
@@ -361,6 +439,9 @@ async def build_snapshot_from_request(*, request: StateRequestV1) -> SnapshotV1:
         "notifications_version": len(notification_manager.updates),
         "computer_screen_raw": computer_screen_raw,
         "computer_screen_mouse": computer_screen_mouse,
+        "context_is_computer": _context_is_computer,
+        "computer_screen_preview_auto_refresh": _auto_refresh,
+        "computer_screen_preview_interval_sec": _interval_sec,
     }
 
     validate_snapshot_schema_v1(snapshot)

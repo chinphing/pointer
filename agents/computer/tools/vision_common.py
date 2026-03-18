@@ -101,8 +101,6 @@ def get_single_index_pos(
     agent: Any,
     args: Dict[str, Any],
     index_map: Dict[int, Dict[str, float]],
-    *,
-    for_drag: bool = False,
 ) -> Tuple[Optional[List[int]], Optional[Response]]:
     """Resolve single index to position (center only; no delta_x/delta_y)."""
     index_arg = args.get("index")

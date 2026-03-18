@@ -318,6 +318,8 @@ function setConnectionStatus(connected) {
 
 let lastLogVersion = 0;
 let lastLogGuid = "";
+/** Track previous log_progress_active so we can detect message loop end and refetch to show final response. */
+let lastProgressActive = false;
 let lastSpokenNo = 0;
 
 export function buildStateRequestPayload(options = {}) {
@@ -364,6 +366,7 @@ export async function applySnapshot(snapshot, options = {}) {
       if (chatHistoryEl) chatHistoryEl.innerHTML = "";
       lastLogVersion = 0;
       lastLogGuid = snapshot.log_guid;
+      lastProgressActive = false;
       if (typeof onLogGuidReset === "function") {
         await onLogGuidReset();
       }
@@ -372,6 +375,15 @@ export async function applySnapshot(snapshot, options = {}) {
     // First guid observed for this context: accept it and continue applying snapshot.
     lastLogVersion = 0;
     lastLogGuid = snapshot.log_guid;
+  }
+
+  // Detect gap: we may have missed one or more state_push events, so this snapshot
+  // only contains logs from an advanced cursor and we'd skip earlier entries.
+  const logVersion = Number(snapshot.log_version);
+  const logsArray = Array.isArray(snapshot.logs) ? snapshot.logs : [];
+  const expectedNew = logVersion - Number(lastLogVersion);
+  if (expectedNew > 0 && expectedNew > logsArray.length) {
+    return { updated: false, logGap: true };
   }
 
   if (lastLogVersion != snapshot.log_version) {
@@ -385,11 +397,29 @@ export async function applySnapshot(snapshot, options = {}) {
 
   updateProgress(snapshot.log_progress, snapshot.log_progress_active);
 
-  // Update computer raw screenshot and mouse position for right-panel preview (computer profile)
-  if (typeof snapshot.computer_screen_raw === "string") {
+  // Update computer raw screenshot and mouse position for right-panel preview (computer profile).
+  // Session running: update image + start/stop timer. Session ended (context still computer): keep last screenshot.
+  const hasScreenRaw = typeof snapshot.computer_screen_raw === "string" && snapshot.computer_screen_raw.length > 0;
+  const contextIsComputer = Boolean(snapshot.context_is_computer);
+  if (hasScreenRaw) {
     computerScreenStore.setComputerScreenRaw(snapshot.computer_screen_raw);
+    computerScreenStore.setComputerScreenMouse(snapshot.computer_screen_mouse ?? null);
+    const sessionActive = Boolean(snapshot.log_progress_active);
+    if (sessionActive && snapshot.computer_screen_preview_auto_refresh !== false) {
+      const intervalSec = snapshot.computer_screen_preview_interval_sec ?? 5;
+      computerScreenStore.startPreviewRefresh(intervalSec);
+    } else {
+      computerScreenStore.stopPreviewRefresh();
+    }
+  } else if (contextIsComputer) {
+    // Session ended or not started: keep last screenshot and mouse; only stop timer.
+    computerScreenStore.stopPreviewRefresh();
+  } else {
+    // Switched to non-computer context: clear panel.
+    computerScreenStore.setComputerScreenRaw("");
+    computerScreenStore.stopPreviewRefresh();
+    computerScreenStore.setComputerScreenMouse(null);
   }
-  computerScreenStore.setComputerScreenMouse(snapshot.computer_screen_mouse ?? null);
 
   // Update notifications from snapshot
   notificationStore.updateFromPoll(snapshot);
@@ -442,7 +472,10 @@ export async function applySnapshot(snapshot, options = {}) {
     // update message queue
     messageQueueStore.updateFromPoll();
 
-    return { updated };
+    const progressJustEnded =
+      lastProgressActive === true && !Boolean(snapshot.log_progress_active);
+    lastProgressActive = Boolean(snapshot.log_progress_active);
+    return { updated, progressJustEnded };
   }
 
 export async function poll() {
@@ -462,6 +495,11 @@ export async function poll() {
       touchConnectionStatus: true,
       onLogGuidReset: poll,
     });
+    if (result && result.progressJustEnded && typeof syncStore.sendStateRequest === "function") {
+      syncStore.sendStateRequest({ forceFull: true }).catch((err) => {
+        console.error("[index] progressJustEnded refetch failed", err);
+      });
+    }
     return { ok: true, updated: Boolean(result && result.updated) };
   } catch (error) {
     console.error("Error:", error);

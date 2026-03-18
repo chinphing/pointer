@@ -93,6 +93,10 @@ def initialize_agent(override_settings: dict | None = None):
         # additional = {},
     )
 
+    # DaTi CAPTCHA (for computer profile / captcha_verify tool)
+    for key in ("dati_api_url", "dati_authcode", "dati_typeno", "dati_author"):
+        config.additional[key] = current_settings.get(key, "")
+
     # update SSH and docker settings
     _set_runtime_config(config, current_settings)
 

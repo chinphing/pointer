@@ -51,7 +51,8 @@ Required fields:
 Allowed tools:
 - `list_dir_structure` (path: get full directory/file tree including subdirs; call first when a subtask involves a folder)
 - **Call priority:** Prefer fewest tool calls → **composite_action** first (type_text_at_index, type_text_at, scroll_at_index), then **hotkey** and **modified_click**, then **mouse**. Use **wait** when a delay is needed. **Reminder:** Click and type can be done in **one call** with composite_action — use type_text_at_index or type_text_at, not mouse click then separate type. When mouse is already in scrollable area use **mouse:scroll_at_current**; otherwise **composite_action:scroll_at_index** then **mouse:scroll_at_current**. For **selecting multiple items** use **modified_click:modified_click_index** when the screenshot has index labels.
-- `extract_data:extract` (saves and returns a short summary); `extract_data:load` (load one task’s saved data for a later task)
+- **CAPTCHA:** When a CAPTCHA is visible (image grid, slider, distorted text + input, etc.), use **captcha_verify** (type / click / drag) **directly in that turn**. Do **not** call extract_data first to "read" or "understand" the CAPTCHA; captcha_verify infers type and requirement from the screenshot.
+- `extract_data:extract` (saves and returns a short summary); `extract_data:load` (load one task’s saved data for a later task). **Do not use extract_data for CAPTCHA** — use captcha_verify instead.
 - `task_done` (with task_index; auto-merges fragments; response includes saved-data summary and load hint)
 - `task_done:read`
 - `response`

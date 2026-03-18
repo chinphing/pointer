@@ -567,19 +567,36 @@ class WebSocketClient {
       transports: ["websocket", "polling"],
       withCredentials: true,
       auth: (cb) => {
-        getCsrfToken()
-          .then((token) => {
-            if (typeof token === "string" && token.length > 0) {
-              cb({ csrf_token: token });
-            } else {
-              console.error("[websocket] CSRF token missing or invalid for connect");
-              cb({});
-            }
-          })
-          .catch((error) => {
-            console.error("[websocket] failed to fetch CSRF token for connect", error);
-            cb({});
-          });
+        // Use getCsrfToken() (cached from connect() prefetch or from disconnect-invalidated refetch). Do not invalidate
+        // here: that wipes the prefetched token and forces a new fetch; if that fails we send cb({}) and trigger
+        // "missing csrf_token in auth". On disconnect we already invalidate so the next connect gets a fresh token.
+        const tryAuth = (attempt = 0) => {
+          const maxAttempts = 3;
+          const delayMs = attempt === 0 ? 0 : 300 * attempt;
+          const doTry = () =>
+            getCsrfToken()
+              .then((token) => {
+                if (typeof token === "string" && token.length > 0) {
+                  cb({ csrf_token: token });
+                } else if (attempt < maxAttempts - 1) {
+                  setTimeout(() => tryAuth(attempt + 1), 300);
+                } else {
+                  console.error("[websocket] CSRF token missing or invalid for connect");
+                  cb({});
+                }
+              })
+              .catch((error) => {
+                console.error("[websocket] failed to fetch CSRF token for connect", error);
+                if (attempt < maxAttempts - 1) {
+                  setTimeout(() => tryAuth(attempt + 1), 300);
+                } else {
+                  cb({});
+                }
+              });
+          if (delayMs > 0) setTimeout(doTry, delayMs);
+          else doTry();
+        };
+        tryAuth(0);
       },
     });
 
@@ -617,6 +634,8 @@ class WebSocketClient {
     this.socket.on("disconnect", (reason) => {
       this.connected = false;
       this.debugLog("socket disconnected", { reason });
+      // Invalidate CSRF so next connect (e.g. after server restart) refetches instead of sending stale token.
+      invalidateCsrfToken();
       this.disconnectCallbacks.forEach((cb) => {
         try {
           cb(reason);

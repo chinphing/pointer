@@ -2,6 +2,8 @@
 
 Two methods: **extract** (capture and save; response includes a short summary of what was saved) and **load** (load previously saved task data for use in a later task—no re-extraction).
 
+**Do not use for CAPTCHA/code verification.** When the screen shows a CAPTCHA (image grid, slider, distorted text + input, "select all that contain…", etc.), use **captcha_verify** directly — do not call extract_data first to "read the CAPTCHA requirement". captcha_verify infers type and requirement from the screenshot; extract_data is for reading page/content for later use, not for preparing CAPTCHA actions.
+
 ---
 
 #### extract_data:extract

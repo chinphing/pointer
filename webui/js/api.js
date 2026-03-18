@@ -1,4 +1,21 @@
 /**
+ * Parse response body as JSON. Avoids "Unexpected end of JSON input" when body is empty.
+ * @param {Response} response
+ * @returns {Promise<any>}
+ */
+async function responseJson(response) {
+  const text = await response.text();
+  if (typeof text !== "string" || !text.trim()) {
+    throw new Error(`Empty response (${response.status} ${response.url || response.statusText || ""})`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error(`Invalid JSON: ${e.message || String(e)}`);
+  }
+}
+
+/**
  * Call a JSON-in JSON-out API endpoint
  * Data is automatically serialized
  * @param {string} endpoint - The API endpoint to call
@@ -19,8 +36,7 @@ export async function callJsonApi(endpoint, data) {
     const error = await response.text();
     throw new Error(error);
   }
-  const jsonResponse = await response.json();
-  return jsonResponse;
+  return await responseJson(response);
 }
 
 /**
@@ -145,7 +161,7 @@ export async function getCsrfToken() {
       window.location.href = response.url;
       return;
     }
-    const json = await response.json();
+    const json = await responseJson(response);
     if (json.ok) {
       const runtimeId =
         typeof json.runtime_id === "string" && json.runtime_id.length > 0

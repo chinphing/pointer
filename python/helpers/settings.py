@@ -159,6 +159,17 @@ class Settings(TypedDict):
 
     update_check_enabled: bool
 
+    # DaTi CAPTCHA (captcha_verify tool)
+    dati_api_url: str
+    dati_authcode: str
+    dati_typeno: str
+    dati_author: str
+    captcha_slider_offset_px: int  # horizontal offset (px) added to drag target when is_slider=True
+
+    # Computer agent: right-panel screenshot refresh
+    computer_screen_preview_auto_refresh: bool
+    computer_screen_preview_interval_sec: int
+
 
 class PartialSettings(Settings, total=False):
     pass
@@ -601,6 +612,13 @@ def get_default_settings() -> Settings:
         secrets="",
         litellm_global_kwargs=get_default_value("litellm_global_kwargs", {}),
         update_check_enabled=get_default_value("update_check_enabled", True),
+        dati_api_url=get_default_value("dati_api_url", ""),
+        dati_authcode=get_default_value("dati_authcode", ""),
+        dati_typeno=get_default_value("dati_typeno", ""),
+        dati_author=get_default_value("dati_author", ""),
+        captcha_slider_offset_px=get_default_value("captcha_slider_offset_px", 10),
+        computer_screen_preview_auto_refresh=get_default_value("computer_screen_preview_auto_refresh", True),
+        computer_screen_preview_interval_sec=get_default_value("computer_screen_preview_interval_sec", 5),
     )
 
 

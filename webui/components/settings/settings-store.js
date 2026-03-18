@@ -63,8 +63,12 @@ const model = {
       }
     } catch (e) {
       console.error("Failed to load settings:", e);
-      this.error = e.message || "Failed to load settings";
-      toast("Failed to load settings", "error");
+      const msg = e && e.message;
+      const emptyOrJson = msg && (msg.includes("Unexpected end of JSON input") || msg.includes("Empty response") || msg.includes("Invalid JSON"));
+      this.error = emptyOrJson
+        ? "Server returned an empty or invalid response. Try a hard refresh (Ctrl+Shift+R) or clear cache, then open Settings again."
+        : (msg || "Failed to load settings");
+      toast(this.error, "error");
     } finally {
       this.isLoading = false;
     }

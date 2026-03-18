@@ -15,6 +15,9 @@ OVERLAP_AREA_RATIO_THRESHOLD = 0.1
 RTREE_OVERLAP_TOP_K = 5
 RTREE_NEAREST_K = 5
 
+import logging
+log = logging.getLogger(__name__)
+
 
 def _sort_boxes_lrtb(
     boxes: Iterable[Sequence[float]], cell_h: int = 20
@@ -206,8 +209,14 @@ class BoxAnnotator:
     def text_detection(self):  # type: ignore[no-any-return]
         """Lazy-load PaddleOCR TextDetection so normal UI detection (RF-DETR only) does not require netcdf."""
         if self._text_detection is None:
+            import os
+            # Disable OneDNN on Windows to avoid NotImplementedError (ConvertPirAttribute2RuntimeAttribute)
+            if os.name == "nt":
+                enable_mkldnn = False
+            else:
+                enable_mkldnn = None
             from paddleocr import TextDetection as _TextDetection
-            self._text_detection = _TextDetection(model_name="PP-OCRv5_server_det")
+            self._text_detection = _TextDetection(model_name="PP-OCRv5_server_det", enable_mkldnn=enable_mkldnn)
         return self._text_detection
 
     @staticmethod
@@ -443,7 +452,11 @@ class BoxAnnotator:
         返回: ( 标注图, boxes_sorted )
         """
         boxes_with_scores_rfdetr = self.predict(image, threshold=threshold)
-        boxes_with_scores_ocr = self.predict_with_ocr(image, padding=padding)
+        try:
+            boxes_with_scores_ocr = self.predict_with_ocr(image, padding=padding)
+        except Exception as e:
+            log.exception("Error in predict_with_ocr: %s", e)
+            boxes_with_scores_ocr = []
         boxes_with_scores = [*boxes_with_scores_rfdetr, *boxes_with_scores_ocr]
         boxes_with_scores_trimmed = trim_by_overlab_optimize(boxes_with_scores, overlap_threshold=overlap_threshold)
         boxes_sorted = _sort_boxes_lrtb([b[0] for b in boxes_with_scores_trimmed])

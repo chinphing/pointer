@@ -607,11 +607,17 @@ def is_in_base_dir(path: str):
     return is_in_dir(path,get_base_dir())
 
 
-def is_in_dir(path:str,dir:str):
+def is_in_dir(path: str, dir: str):
     # check if the given path is within the directory
     abs_path = os.path.abspath(path)
     abs_dir = os.path.abspath(dir)
-    return os.path.commonpath([abs_path, abs_dir]) == abs_dir
+    # On Windows, commonpath raises ValueError when paths are on different drives
+    if os.name == "nt" and os.path.splitdrive(abs_path)[0] != os.path.splitdrive(abs_dir)[0]:
+        return False
+    try:
+        return os.path.commonpath([abs_path, abs_dir]) == abs_dir
+    except ValueError:
+        return False
 
 
 def get_subdirectories(

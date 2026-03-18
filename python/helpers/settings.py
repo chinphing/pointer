@@ -67,6 +67,7 @@ class Settings(TypedDict):
     util_model_provider: str
     util_model_name: str
     util_model_api_base: str
+    util_model_vision: bool
     util_model_kwargs: dict[str, Any]
     util_model_ctx_length: int
     util_model_ctx_input: float
@@ -538,6 +539,7 @@ def get_default_settings() -> Settings:
         util_model_provider=get_default_value("util_model_provider", "openrouter"),
         util_model_name=get_default_value("util_model_name", "google/gemini-3-flash-preview"),
         util_model_api_base=get_default_value("util_model_api_base", ""),
+        util_model_vision=get_default_value("util_model_vision", False),
         util_model_ctx_length=get_default_value("util_model_ctx_length", 100000),
         util_model_ctx_input=get_default_value("util_model_ctx_input", 0.7),
         util_model_kwargs=get_default_value("util_model_kwargs", {}),

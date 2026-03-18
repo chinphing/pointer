@@ -55,6 +55,7 @@ def initialize_agent(override_settings: dict | None = None):
         name=current_settings["util_model_name"],
         api_base=current_settings["util_model_api_base"],
         ctx_length=current_settings["util_model_ctx_length"],
+        vision=current_settings["util_model_vision"],
         limit_requests=current_settings["util_model_rl_requests"],
         limit_input=current_settings["util_model_rl_input"],
         limit_output=current_settings["util_model_rl_output"],

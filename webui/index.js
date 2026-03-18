@@ -377,19 +377,28 @@ export async function applySnapshot(snapshot, options = {}) {
     lastLogGuid = snapshot.log_guid;
   }
 
-  // Detect gap: we may have missed one or more state_push events, so this snapshot
-  // only contains logs from an advanced cursor and we'd skip earlier entries.
+  // Backend log_version = len(log.updates): every stream chunk appends to updates, so
+  // log_version grows many times per message. log.output(start) returns entries
+  // deduplicated by item no, so logs.length is often less than (log_version - lastLogVersion).
+  // That would make expectedNew > logsArray.length in normal streaming (false gap).
+  // Only treat as real gap when we got no new content (logsArray.length === 0) but
+  // version increased — i.e. we likely missed a push. When we did get some logs,
+  // always apply them and do not trigger forceFull (avoids unnecessary refetch during stream).
   const logVersion = Number(snapshot.log_version);
   const logsArray = Array.isArray(snapshot.logs) ? snapshot.logs : [];
   const expectedNew = logVersion - Number(lastLogVersion);
-  if (expectedNew > 0 && expectedNew > logsArray.length) {
-    return { updated: false, logGap: true };
-  }
+  const hasLogGap =
+    lastLogVersion > 0 &&
+    expectedNew > 0 &&
+    logsArray.length === 0;
 
   if (lastLogVersion != snapshot.log_version) {
     updated = true;
-    setMessages(snapshot.logs);
-    afterMessagesUpdate(snapshot.logs);
+    // Sort by no so display order is stable (backend log.output() order is by first update, not no)
+    const logs = Array.isArray(snapshot.logs) ? [...snapshot.logs] : [];
+    logs.sort((a, b) => (Number(a?.no) ?? 0) - (Number(b?.no) ?? 0));
+    setMessages(logs);
+    afterMessagesUpdate(logs);
   }
 
   lastLogVersion = snapshot.log_version;
@@ -475,7 +484,7 @@ export async function applySnapshot(snapshot, options = {}) {
     const progressJustEnded =
       lastProgressActive === true && !Boolean(snapshot.log_progress_active);
     lastProgressActive = Boolean(snapshot.log_progress_active);
-    return { updated, progressJustEnded };
+    return { updated, progressJustEnded, logGap: hasLogGap };
   }
 
 export async function poll() {
@@ -496,9 +505,11 @@ export async function poll() {
       onLogGuidReset: poll,
     });
     if (result && result.progressJustEnded && typeof syncStore.sendStateRequest === "function") {
-      syncStore.sendStateRequest({ forceFull: true }).catch((err) => {
-        console.error("[index] progressJustEnded refetch failed", err);
-      });
+      setTimeout(() => {
+        syncStore.sendStateRequest({ forceFull: true }).catch((err) => {
+          console.error("[index] progressJustEnded refetch failed", err);
+        });
+      }, 80);
     }
     return { ok: true, updated: Boolean(result && result.updated) };
   } catch (error) {
@@ -698,7 +709,9 @@ async function startPolling() {
   // Fallback polling cadence:
   // - DISCONNECTED: do not poll (transport down, avoid request spam)
   // - HANDSHAKE_PENDING/DEGRADED: steady fallback cadence to keep UI responsive
+  // - HEALTHY + agent running: backup poll so GEN/tool steps update in near real-time
   const degradedIntervalMs = 250;
+  const runningBackupPollIntervalMs = 1000;
   let missingSyncSinceMs = null;
   let consecutivePollFailures = 0;
   let lastHandshakeKickMs = 0;
@@ -724,12 +737,17 @@ async function startPolling() {
         missingSyncSinceMs = null;
       }
 
+      const runningBackupPoll = syncMode === "HEALTHY" && lastProgressActive;
       const shouldPoll =
         syncMode === "DEGRADED" ||
+        runningBackupPoll ||
         (missingSyncSinceMs != null && Date.now() - missingSyncSinceMs > 2000);
       if (!shouldPoll) {
         setTimeout(_doPoll.bind(this), nextInterval);
         return;
+      }
+      if (runningBackupPoll) {
+        nextInterval = runningBackupPollIntervalMs;
       }
 
       if (pollInFlight) {
@@ -789,10 +807,10 @@ async function startPolling() {
 
       const effectiveMode =
         syncStore && typeof syncStore.mode === "string" ? syncStore.mode : syncMode;
-      nextInterval =
-        effectiveMode === "DEGRADED" || effectiveMode === "HANDSHAKE_PENDING"
-          ? degradedIntervalMs
-          : degradedIntervalMs;
+      if (effectiveMode === "DEGRADED" || effectiveMode === "HANDSHAKE_PENDING") {
+        nextInterval = degradedIntervalMs;
+      }
+      // When HEALTHY and running, nextInterval stays at runningBackupPollIntervalMs from above
     } catch (error) {
       console.error("Error:", error);
     }

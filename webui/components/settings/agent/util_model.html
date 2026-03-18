@@ -64,6 +64,21 @@
 
           <div class="field">
             <div class="field-label">
+              <div class="field-title">Supports Vision</div>
+              <div class="field-description">
+                Enable if the utility model accepts images (e.g. for extract_data or other vision-based utility tasks).
+              </div>
+            </div>
+            <div class="field-control">
+              <label class="toggle">
+                <input type="checkbox" x-model="$store.settings.settings.util_model_vision" />
+                <span class="toggler"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="field-label">
               <div class="field-title">Requests per minute limit</div>
               <div class="field-description">
                 Limits the number of requests per minute to the utility model. Waits if the limit is exceeded. Set to 0 to disable rate limiting.

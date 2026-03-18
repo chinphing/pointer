@@ -7,6 +7,9 @@ import { store as notificationStore } from "/components/notifications/notificati
 
 const stateSocket = getNamespacedClient("/state_sync");
 
+/** Timeout for state_request handshake (ms). Increase if backend or network is slow. */
+const STATE_REQUEST_TIMEOUT_MS = 5000;
+
 const SYNC_MODES = {
   DISCONNECTED: "DISCONNECTED",
   HANDSHAKE_PENDING: "HANDSHAKE_PENDING",
@@ -68,6 +71,8 @@ const model = {
   _lastForceReconnectAtMs: 0,
   _forceReconnectThreshold: 3,
   _suppressDisconnectToastOnce: false,
+  _logGapResyncCooldownMs: 2000,
+  _lastLogGapResyncAtMs: 0,
 
   runtimeEpoch: null,
   seqBase: 0,
@@ -382,16 +387,20 @@ const model = {
       let response;
       try {
         debug("[syncStore] state_request sent", payload);
-        response = await stateSocket.request("state_request", payload, { timeoutMs: 2000 });
+        response = await stateSocket.request("state_request", payload, {
+          timeoutMs: STATE_REQUEST_TIMEOUT_MS,
+        });
       } catch (error) {
         this.needsHandshake = true;
+        const reason = error?.message || String(error);
+        console.error("[syncStore] state_request failed:", reason, error);
         // If the socket isn't connected, we are disconnected (poll may or may not work).
         // If the socket is connected but the request failed/timed out, treat as degraded (poll fallback).
         this._setMode(
           stateSocket.isConnected() ? SYNC_MODES.DEGRADED : SYNC_MODES.DISCONNECTED,
           "state_request failed",
         );
-        this._handleHandshakeFailure("state_request failed");
+        this._handleHandshakeFailure(`state_request failed: ${reason}`);
         throw error;
       }
 
@@ -401,6 +410,8 @@ const model = {
           first && first.error && typeof first.error.code === "string"
             ? first.error.code
             : "HANDSHAKE_FAILED";
+        const msg = first?.error?.message ?? "";
+        console.error("[syncStore] handshake failed:", code, msg || "(no message)", first?.error);
         this._setMode(SYNC_MODES.DEGRADED, `handshake failed: ${code}`);
         this.needsHandshake = true;
         this._handleHandshakeFailure(`handshake failed: ${code}`);
@@ -488,11 +499,25 @@ const model = {
         },
       });
       if (result && result.logGap) {
-        debug("[syncStore] log gap detected (missed push) -> resync (forceFull)");
-        await this.sendStateRequest({ forceFull: true });
+        const now = Date.now();
+        if (now - this._lastLogGapResyncAtMs >= this._logGapResyncCooldownMs) {
+          this._lastLogGapResyncAtMs = now;
+          debug("[syncStore] log gap detected (missed push) -> resync (forceFull)");
+          await this.sendStateRequest({ forceFull: true });
+        } else {
+          debug("[syncStore] log gap detected but resync skipped (cooldown)");
+        }
       } else if (result && result.progressJustEnded) {
         debug("[syncStore] message loop ended -> refetch to show final response");
-        await this.sendStateRequest({ forceFull: true });
+        // Defer so the snapshot we just applied paints first; avoids double render jank
+        const sync = this;
+        setTimeout(() => {
+          if (typeof sync.sendStateRequest === "function") {
+            sync.sendStateRequest({ forceFull: true }).catch((err) => {
+              console.error("[syncStore] progressJustEnded refetch failed", err);
+            });
+          }
+        }, 80);
       }
       this._setMode(SYNC_MODES.HEALTHY, "push applied");
       await this._flushPendingReconnectToast();

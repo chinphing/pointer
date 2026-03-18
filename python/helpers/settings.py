@@ -618,7 +618,7 @@ def get_default_settings() -> Settings:
         dati_authcode=get_default_value("dati_authcode", ""),
         dati_typeno=get_default_value("dati_typeno", ""),
         dati_author=get_default_value("dati_author", ""),
-        captcha_slider_offset_px=get_default_value("captcha_slider_offset_px", 10),
+        captcha_slider_offset_px=get_default_value("captcha_slider_offset_px", 0),
         computer_screen_preview_auto_refresh=get_default_value("computer_screen_preview_auto_refresh", True),
         computer_screen_preview_interval_sec=get_default_value("computer_screen_preview_interval_sec", 5),
     )

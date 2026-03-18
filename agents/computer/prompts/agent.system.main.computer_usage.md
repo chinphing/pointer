@@ -14,7 +14,7 @@ Use these rules for reliable, low-cost operation.
 - If the target window is blocked by another window/popup or not focused, first bring it to front and activate it, then operate.
 - When calling a tool, describe the **target element** in the goal: if the target is **text**, include the **exact visible text**; if an **icon/image** or other element, briefly describe its **features** (e.g. folder icon, blue arrow); otherwise give **position and features** (e.g. top-left checkbox, first list item). This makes the action clear and verifiable.
 - **File selection**: When selecting a **file** in a file list, picker, or Finder/Explorer, **prefer the index that corresponds to the file name** (the visible filename text), not the file icon or the whole row—clicking on the filename is more reliable.
-- Validate each action from visible screen evidence. For page-open/navigation steps, describe key identifiers in thoughts (title, URL keyword, main heading, app/site label) to confirm success; if unclear, retry then switch method.
+- Validate each action from visible screen evidence. Use the **mouse cursor** (arrow) in the screenshot to check that the previous click landed at the intended position; use the **focus caret** (I-beam) to check which input has focus and that the previous type/focus action targeted the right field. For page-open/navigation steps, describe key identifiers in thoughts (title, URL keyword, main heading, app/site label) to confirm success; if unclear, retry then switch method.
 - Keep thoughts concise and action-oriented.
 
 ### 2) Planning
@@ -73,10 +73,11 @@ In thoughts, briefly state: overlap evidence (what repeated), overlap size (roug
 
 ### 6) Input and UI focus
 
-- **Reminder:** Click and input can be executed **in one step** via **composite_action** (`type_text_at_index` or `type_text_at`). Prefer one composite_action call instead of mouse click plus a separate type action.
+- **Reminder:** Click and input can be executed **in one step** via **composite_action** (`type_text_at_index`, `type_text_at`, or `type_text_at_focused_input`). Prefer one composite_action call instead of mouse click plus a separate type action.
 - **When entering text into a field that has an index:** use **composite_action:type_text_at_index** **directly**. It already clicks the target to focus and then types — **do not** call mouse:click_index first; that is redundant and slower.
+- **When the input already has focus** (cursor in the field, or you just focused it): use **composite_action:type_text_at_focused_input** — no click needed; pass `text` and optional `clear_existing`.
 - Click text area or blank area for input box to acquire focus only when you are not typing (e.g. opening a menu). For "type into this field", prefer **composite_action:type_text_at_index** in one step.
-- Replace text with select-all + type when user intent is replace (use `clear_first: true` in **composite_action:type_text_at_index** or equivalent).
+- Replace text with select-all + type when user intent is replace (use `clear_first: true` in **composite_action:type_text_at_index** or `clear_existing: true` in **type_text_at_focused_input**, or equivalent).
 
 ### 7) Unavailable or disabled interactive elements
 

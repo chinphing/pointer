@@ -123,15 +123,12 @@
                                     :title="$store.computerScreen.screenshotPanelVisible ? '收起' : '展开'"
                                     x-text="$store.computerScreen.screenshotPanelVisible ? '◀' : '▶'"></button>
                         </div>
-                        <div class="screenshot-panel__body" x-show="$store.computerScreen.screenshotPanelVisible"
-                             x-data="screenshotWithCursor()" x-init="init()">
+                        <div class="screenshot-panel__body" x-show="$store.computerScreen.screenshotPanelVisible">
                             <div class="screenshot-panel__img-wrap" x-show="$store.computerScreen.computerScreenRaw">
                                 <img x-show="$store.computerScreen.computerScreenRaw"
                                      :src="$store.computerScreen.computerScreenRaw"
                                      alt="Screen capture"
-                                     class="screenshot-panel__img"
-                                     @load="onImgLoad($event)" />
-                                <img class="screenshot-panel__cursor" x-show="cursorVisible" :style="cursorStyle" aria-hidden="true" src="/public/cursor-pointer.svg" alt="" />
+                                     class="screenshot-panel__img" />
                             </div>
                             <div x-show="!$store.computerScreen.computerScreenRaw" class="screenshot-panel__placeholder">暂无截图</div>
                         </div>

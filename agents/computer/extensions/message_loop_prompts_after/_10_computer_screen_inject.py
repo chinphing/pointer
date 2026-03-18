@@ -35,6 +35,13 @@ import screen as screen_mod  # noqa: E402
 import som_util  # noqa: E402
 import os_prompts  # noqa: E402
 
+import focus_position  # noqa: E402
+from screen_overlay import draw_cursor_pointer_overlay, draw_focus_caret_overlay  # noqa: E402
+
+_draw_cursor_pointer_overlay = draw_cursor_pointer_overlay
+_draw_mouse_overlay = draw_cursor_pointer_overlay
+_draw_focus_caret_overlay = draw_focus_caret_overlay
+
 
 # nearest neighbor count
 NEAREST_NEIGHBOR_COUNT = 10
@@ -68,21 +75,6 @@ def _pil_to_base64_jpeg(pil_img: Image.Image, quality: int = 85) -> str:
     pil_img.save(buf, format="JPEG", quality=quality)
     import base64
     return base64.b64encode(buf.getvalue()).decode("utf-8")
-
-
-def _draw_mouse_overlay(pil_image: Image.Image, mouse_ix: int, mouse_iy: int) -> Image.Image:
-    """Draw a small circle and crosshair at mouse position on a copy of the image. Returns new image."""
-    out = pil_image.copy()
-    if out.mode != "RGB":
-        out = out.convert("RGB")
-    draw = ImageDraw.Draw(out)
-    r = 10
-    x1, y1 = mouse_ix - r, mouse_iy - r
-    x2, y2 = mouse_ix + r, mouse_iy + r
-    draw.ellipse([x1, y1, x2, y2], outline=(255, 0, 0), width=3)
-    draw.line([(mouse_ix - r - 2, mouse_iy), (mouse_ix + r + 2, mouse_iy)], fill=(255, 0, 0), width=2)
-    draw.line([(mouse_ix, mouse_iy - r - 2), (mouse_ix, mouse_iy + r + 2)], fill=(255, 0, 0), width=2)
-    return out
 
 
 SCREEN_INJECT_PREVIEW = "<screen images>"
@@ -261,6 +253,29 @@ class ComputerScreenInject(Extension):
         mon_left, mon_top, mon_width, mon_height = mon_bbox
         w, h = img.size
 
+        # Focus/caret position: draw system-like blinking caret on raw and annotated screenshots
+        focus_ix, focus_iy = None, None
+        try:
+            fp = focus_position.get_focus_position()
+            if fp is not None:
+                fx, fy = fp
+                focus_ix = fx - mon_left
+                focus_iy = fy - mon_top
+                if 0 <= focus_ix < w and 0 <= focus_iy < h:
+                    img = _draw_focus_caret_overlay(img, focus_ix, focus_iy)
+        except Exception:
+            pass
+
+        # Mouse cursor: draw webui cursor-pointer.svg on raw image (and later on annotated)
+        try:
+            mx, my = pyautogui.position()
+            mouse_ix_raw = mx - mon_left
+            mouse_iy_raw = my - mon_top
+            if 0 <= mouse_ix_raw < w and 0 <= mouse_iy_raw < h:
+                img = _draw_cursor_pointer_overlay(img, mouse_ix_raw, mouse_iy_raw)
+        except Exception:
+            pass
+
         # Store raw screenshot as base64 for frontend live preview (snapshot.computer_screen_raw)
         buf = BytesIO()
         img.save(buf, format="PNG")
@@ -324,6 +339,9 @@ class ComputerScreenInject(Extension):
             self.agent.set_data("computer_screen_mouse_xy", [mouse_ix, mouse_iy])
             if 0 <= mouse_ix < w and 0 <= mouse_iy < h:
                 annotated_img = _draw_mouse_overlay(annotated_img, mouse_ix, mouse_iy)
+            if focus_ix is not None and focus_iy is not None and 0 <= focus_ix < w and 0 <= focus_iy < h:
+                annotated_img = _draw_focus_caret_overlay(annotated_img, focus_ix, focus_iy)
+            if 0 <= mouse_ix < w and 0 <= mouse_iy < h:
                 nx, ny = coord_convert.pixel_to_normalized(mouse_ix, mouse_iy, coord_system, w, h)
                 mouse_coords_str = (
                     f"Current mouse position (normalized, same scale as your output): ({round(nx, 2)}, {round(ny, 2)}). "
@@ -452,7 +470,7 @@ class ComputerScreenInject(Extension):
                 "(3) zoom: 300px region around current mouse position, 3× magnification. "
                 + annotation_help
                 + f" Image size: {w}×{h} pixels. Origin: top-left (0,0). "
-                + "The annotated image shows the current mouse cursor (red circle/crosshair). "
+                + "Pay attention to two overlays on the images: (1) **Mouse cursor** — the arrow shows where the pointer is; use it to verify that the previous click landed at the intended position. (2) **Focus caret** — the I-beam or blinking caret shows which input has focus; use it to verify focus and that the previous type/focus action targeted the right field. Both raw and annotated images include these overlays. "
                 + mouse_coords_str
                 + "\n"
                 + reference_bbox_text

@@ -1,5 +1,5 @@
 """
-Composite action tool: type_text_at_index, type_text_at, scroll_at_index.
+Composite action tool: type_text_at_index, type_text_at, type_text_at_focused_input, scroll_at_index.
 One-call combos (click+type or move+scroll) — prefer over multiple tool calls.
 """
 from __future__ import annotations
@@ -59,7 +59,7 @@ class CompositeActionTool(Tool):
         handler = _HANDLERS.get(method)
         if handler is None:
             return Response(
-                message="Use method: type_text_at_index, type_text_at, or scroll_at_index.",
+                message="Use method: type_text_at_index, type_text_at, type_text_at_focused_input, or scroll_at_index.",
                 break_loop=False,
             )
         return handler(self, args, actions, goal)
@@ -101,6 +101,24 @@ def _do_type_text_at(tool: CompositeActionTool, args: Dict[str, Any], actions: A
     return _action_done(goal, args)
 
 
+def _do_type_text_at_focused_input(tool: CompositeActionTool, args: Dict[str, Any], actions: ActionTools, goal: str) -> Response:
+    """Type into the currently focused input (no click). Use when an input already has focus."""
+    text = args.get("text", "")
+    if not text:
+        return Response(message="Missing 'text' in tool_args for type_text_at_focused_input.", break_loop=False)
+    clear_existing = (
+        args.get("clear_existing")
+        if isinstance(args.get("clear_existing"), bool)
+        else str(args.get("clear_existing", "")).lower() in ("true", "1", "yes")
+    )
+    if clear_existing:
+        mod = "command" if platform.system() == "Darwin" else "ctrl"
+        actions._press_keys([mod, "a"])
+        time.sleep(0.08)
+    actions._type_text(str(text))
+    return _action_done(goal, args, extra="Typed into focused input. ")
+
+
 def _do_scroll_at_index(tool: CompositeActionTool, args: Dict[str, Any], actions: ActionTools, goal: str) -> Response:
     index_map, err = vc.get_index_map(tool.agent)
     if err is not None:
@@ -131,5 +149,6 @@ def _do_scroll_at_index(tool: CompositeActionTool, args: Dict[str, Any], actions
 _HANDLERS: Dict[str, Any] = {
     "type_text_at_index": _do_type_text_at_index,
     "type_text_at": _do_type_text_at,
+    "type_text_at_focused_input": _do_type_text_at_focused_input,
     "scroll_at_index": _do_scroll_at_index,
 }

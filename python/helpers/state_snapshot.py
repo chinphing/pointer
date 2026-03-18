@@ -233,6 +233,11 @@ def _capture_screen_as_base64() -> tuple[str | None, list[float] | None]:
             sys.path.insert(0, _computer_dir)
         import screen as _screen_mod  # noqa: E402  # type: ignore[import-not-found]
         _img, _bbox = _screen_mod.screenshot_current_monitor()
+        try:
+            import screen_overlay  # noqa: E402  # type: ignore[import-not-found]
+            _img = screen_overlay.apply_mouse_and_focus_overlays(_img, _bbox[0], _bbox[1])
+        except Exception:
+            pass
         _buf = BytesIO()
         _img.save(_buf, format="PNG")
         b64 = base64.b64encode(_buf.getvalue()).decode("ascii")
@@ -265,6 +270,11 @@ def _capture_screen_as_jpeg_bytes(quality: int = 85) -> tuple[bytes | None, list
             sys.path.insert(0, _computer_dir)
         import screen as _screen_mod  # noqa: E402  # type: ignore[import-not-found]
         _img, _bbox = _screen_mod.screenshot_current_monitor()
+        try:
+            import screen_overlay  # noqa: E402  # type: ignore[import-not-found]
+            _img = screen_overlay.apply_mouse_and_focus_overlays(_img, _bbox[0], _bbox[1])
+        except Exception:
+            pass
         if _img.mode in ("RGBA", "P"):
             _img = _img.convert("RGB")
         _buf = BytesIO()

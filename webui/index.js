@@ -17,49 +17,6 @@ import { store as computerScreenStore } from "/components/chat/computer-screen/c
 
 globalThis.fetchApi = api.fetchApi;
 
-// Cursor overlay on raw screenshot: position from store, scaled to displayed image (object-fit: contain)
-document.addEventListener("alpine:init", () => {
-  Alpine.data("screenshotWithCursor", () => ({
-    imgEl: null,
-    natW: 0,
-    natH: 0,
-    cursorVisible: false,
-    cursorStyle: {},
-    onImgLoad(ev) {
-      this.imgEl = ev.target;
-      this.natW = ev.target.naturalWidth;
-      this.natH = ev.target.naturalHeight;
-      this.$nextTick(() => this.updateCursor());
-    },
-    updateCursor() {
-      const store = this.$store?.computerScreen;
-      const mouse = store?.computerScreenMouse;
-      if (!this.imgEl || !this.natW || !this.natH || !mouse) {
-        this.cursorVisible = false;
-        return;
-      }
-      const dw = this.imgEl.offsetWidth;
-      const dh = this.imgEl.offsetHeight;
-      const scale = Math.min(dw / this.natW, dh / this.natH);
-      const contentW = this.natW * scale;
-      const contentH = this.natH * scale;
-      const offsetX = (dw - contentW) / 2;
-      const offsetY = (dh - contentH) / 2;
-      this.cursorStyle = {
-        left: offsetX + mouse[0] * scale + "px",
-        top: offsetY + mouse[1] * scale + "px",
-      };
-      this.cursorVisible = true;
-    },
-    init() {
-      this.$watch(
-        () => this.$store?.computerScreen?.computerScreenMouse,
-        () => this.updateCursor()
-      );
-    },
-  }));
-}); // TODO - backward compatibility for non-modular scripts, remove once refactored to alpine
-
 // Declare variables for DOM elements, they will be assigned on DOMContentLoaded
 let leftPanel,
   rightPanel,

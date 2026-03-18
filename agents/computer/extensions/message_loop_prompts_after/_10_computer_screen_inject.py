@@ -253,7 +253,7 @@ class ComputerScreenInject(Extension):
         mon_left, mon_top, mon_width, mon_height = mon_bbox
         w, h = img.size
 
-        # Focus/caret position: draw system-like blinking caret on raw and annotated screenshots
+        # Focus/caret and mouse positions (used for both raw and annotated)
         focus_ix, focus_iy = None, None
         try:
             fp = focus_position.get_focus_position()
@@ -261,31 +261,31 @@ class ComputerScreenInject(Extension):
                 fx, fy = fp
                 focus_ix = fx - mon_left
                 focus_iy = fy - mon_top
-                if 0 <= focus_ix < w and 0 <= focus_iy < h:
-                    img = _draw_focus_caret_overlay(img, focus_ix, focus_iy)
         except Exception:
             pass
 
-        # Mouse cursor: draw webui cursor-pointer.svg on raw image (and later on annotated)
+        mouse_ix_raw, mouse_iy_raw = None, None
         try:
             mx, my = pyautogui.position()
             mouse_ix_raw = mx - mon_left
             mouse_iy_raw = my - mon_top
-            if 0 <= mouse_ix_raw < w and 0 <= mouse_iy_raw < h:
-                img = _draw_cursor_pointer_overlay(img, mouse_ix_raw, mouse_iy_raw)
         except Exception:
             pass
 
+        # Raw image for LLM and frontend: draw focus and mouse once on a copy (keep img clean for annotation)
+        img_with_overlays = img.copy()
+        if focus_ix is not None and focus_iy is not None and 0 <= focus_ix < w and 0 <= focus_iy < h:
+            img_with_overlays = _draw_focus_caret_overlay(img_with_overlays, focus_ix, focus_iy)
+        if mouse_ix_raw is not None and mouse_iy_raw is not None and 0 <= mouse_ix_raw < w and 0 <= mouse_iy_raw < h:
+            img_with_overlays = _draw_cursor_pointer_overlay(img_with_overlays, mouse_ix_raw, mouse_iy_raw)
+
         # Store raw screenshot as base64 for frontend live preview (snapshot.computer_screen_raw)
         buf = BytesIO()
-        img.save(buf, format="PNG")
+        img_with_overlays.save(buf, format="PNG")
         self.agent.set_data("computer_screen_raw_base64", base64.b64encode(buf.getvalue()).decode("ascii"))
-        # Mouse position for cursor overlay; capture now so frontend can show screenshot immediately
-        try:
-            mx, my = pyautogui.position()
-            self.agent.set_data("computer_screen_mouse_xy", [mx - mon_left, my - mon_top])
-        except Exception:
-            pass
+        # Mouse position for cursor overlay; use already-fetched coords so frontend can show screenshot immediately
+        if mouse_ix_raw is not None and mouse_iy_raw is not None:
+            self.agent.set_data("computer_screen_mouse_xy", [mouse_ix_raw, mouse_iy_raw])
         # Push snapshot so frontend shows this screenshot before slow annotation/model run
         try:
             from python.helpers.state_monitor_integration import mark_dirty_for_context
@@ -303,7 +303,7 @@ class ComputerScreenInject(Extension):
             )
             boxes_sorted = list(boxes_sorted)
         except Exception as e:
-            annotated_img = img
+            annotated_img = img.copy()
             boxes_sorted = []
             err_preview = f"Detection failed: {e}; no indices available."
 
@@ -329,19 +329,16 @@ class ComputerScreenInject(Extension):
             coord_system = "qwen"
         norm_range = "x and y in [0, 1000]" if coord_system == "qwen" else ("x and y in [0, 1]" if coord_system == "kimi" else "screenshot pixels")
 
-        # Mouse position: draw on annotated image; show normalized coords in prompt so model sees same scale as its output
-        mouse_ix, mouse_iy = None, None
+        # Mouse position: draw on annotated image once (img was clean, so no double cursor); show normalized coords in prompt
+        mouse_ix = mouse_ix_raw
+        mouse_iy = mouse_iy_raw
         mouse_coords_str = "Mouse: position unavailable."
         try:
-            mx, my = pyautogui.position()
-            mouse_ix = mx - mon_left
-            mouse_iy = my - mon_top
-            self.agent.set_data("computer_screen_mouse_xy", [mouse_ix, mouse_iy])
-            if 0 <= mouse_ix < w and 0 <= mouse_iy < h:
+            if mouse_ix is not None and mouse_iy is not None and 0 <= mouse_ix < w and 0 <= mouse_iy < h:
                 annotated_img = _draw_mouse_overlay(annotated_img, mouse_ix, mouse_iy)
             if focus_ix is not None and focus_iy is not None and 0 <= focus_ix < w and 0 <= focus_iy < h:
                 annotated_img = _draw_focus_caret_overlay(annotated_img, focus_ix, focus_iy)
-            if 0 <= mouse_ix < w and 0 <= mouse_iy < h:
+            if mouse_ix is not None and mouse_iy is not None and 0 <= mouse_ix < w and 0 <= mouse_iy < h:
                 nx, ny = coord_convert.pixel_to_normalized(mouse_ix, mouse_iy, coord_system, w, h)
                 mouse_coords_str = (
                     f"Current mouse position (normalized, same scale as your output): ({round(nx, 2)}, {round(ny, 2)}). "
@@ -505,8 +502,8 @@ class ComputerScreenInject(Extension):
                 },
             )
 
-        # 2. Raw screenshot - kept in history for comparison
-        b64_raw = _pil_to_base64_jpeg(img)
+        # 2. Raw screenshot - kept in history for comparison (with mouse and focus overlays)
+        b64_raw = _pil_to_base64_jpeg(img_with_overlays)
         raw_img_content: List[Dict[str, Any]] = [
             {"type": "text", "text": "[Screen raw]"},
             {
@@ -539,7 +536,7 @@ class ComputerScreenInject(Extension):
                 zoomed_imgs_to_save.append(("mouse", mouse_zoomed))
 
         context_id = getattr(self.agent.context, "id", None) or "default"
-        saved_paths = _save_snapshots(context_id, img, annotated_img, zoomed_imgs_to_save)
+        saved_paths = _save_snapshots(context_id, img_with_overlays, annotated_img, zoomed_imgs_to_save)
 
         # Pass snapshot path to before_main_llm_call so it can attach to this turn's agent log (not the previous one)
         if runtime.is_development() and saved_paths.get("annotated"):

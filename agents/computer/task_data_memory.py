@@ -9,23 +9,23 @@ import glob
 import os
 from typing import TYPE_CHECKING
 
-from python.helpers import files
-
 if TYPE_CHECKING:
     from agent import Agent
+
+import storage_paths
 
 # Agent data key: set to False to skip cleanup when load_all_tasks runs (default True).
 LOAD_ALL_CLEANUP_KEY = "computer_load_all_cleanup"
 
 
 def _extract_dir(agent: "Agent") -> str:
-    base = files.get_abs_path("agents", "computer", "extract_data")
+    base = storage_paths.computer_extract_data_dir()
     context_id = getattr(agent.context, "id", None) or "default"
     return os.path.join(base, context_id)
 
 
 def _task_done_dir(agent: "Agent") -> str:
-    base = files.get_abs_path("agents", "computer", "task_done")
+    base = storage_paths.computer_task_done_dir()
     context_id = getattr(agent.context, "id", None) or "default"
     return os.path.join(base, context_id)
 

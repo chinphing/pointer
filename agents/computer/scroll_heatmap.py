@@ -15,6 +15,7 @@ All bboxes in this module use (x1, y1, x2, y2) format: left, top, right, bottom 
 from __future__ import annotations
 
 import hashlib
+import os
 from typing import List, Optional, Tuple, Union
 
 import cv2
@@ -408,9 +409,12 @@ def main() -> None:
     import sys
     import matplotlib.pyplot as plt
 
-    base_dir = "/Users/yunyun/Documents/PyProjects/agent-zero/agents/computer/snapshots/"
-    path_before = base_dir + "K4eBhi6q/20260315_084131_raw.png"
-    path_after = base_dir + "K4eBhi6q/20260315_084206_raw.png"
+    import storage_paths
+
+    # Default: {workdir}/computer/snapshots/<context_id>/ (see storage_paths.py)
+    base_dir = os.path.join(storage_paths.computer_snapshots_dir(), "K4eBhi6q")
+    path_before = os.path.join(base_dir, "20260315_084131_raw.png")
+    path_after = os.path.join(base_dir, "20260315_084206_raw.png")
     scroll_ticks_used = -10
     no_show = False
 

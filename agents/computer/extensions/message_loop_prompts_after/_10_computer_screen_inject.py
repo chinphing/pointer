@@ -2,7 +2,7 @@
 Inject current screen images into the prompt for the computer profile.
 Image order: (1) raw screenshot, (2) annotated image with indices, (3) zoom: 300px region around mouse, 3× magnification.
 Uses predict_and_annotate_all for detection; builds index_map (screen coordinates) for vision tools (mouse, hotkey, modified_click, composite_action, wait).
-Saves images under agents/computer/snapshots/<context_id>/.
+Saves images under {workdir}/computer/snapshots/<context_id>/ (see storage_paths.py).
 Only the latest screen inject is sent to the LLM; earlier ones are replaced with a text placeholder to reduce token usage.
 """
 from __future__ import annotations
@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from PIL import Image, ImageDraw
 
 from python.helpers.extension import Extension
-from python.helpers import history, files, runtime
+from python.helpers import history, runtime
 
 # Load computer agent modules by path (agents/computer is not a package)
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -36,6 +36,7 @@ import som_util  # noqa: E402
 import os_prompts  # noqa: E402
 
 import focus_position  # noqa: E402
+import storage_paths  # noqa: E402
 from screen_overlay import draw_cursor_pointer_overlay, draw_focus_caret_overlay  # noqa: E402
 
 _draw_cursor_pointer_overlay = draw_cursor_pointer_overlay
@@ -81,6 +82,20 @@ SCREEN_INJECT_PREVIEW = "<screen images>"
 SCREEN_RAW_PREVIEW = "<screen raw>"
 SCREEN_ANNOTATED_PREVIEW = "<screen annotated>"
 SCREEN_ZOOMED_PREVIEW = "<screen zoomed>"
+
+
+def _preview_with_optional_path(tag: str, path: Optional[str]) -> str:
+    """Keep tag as prefix so history replacement can use str.startswith(tag)."""
+    if path and isinstance(path, str) and path.strip():
+        return f"{tag} | {path}"
+    return tag
+
+
+def _snapshot_preview_basename(abs_path: Optional[str]) -> Optional[str]:
+    """Token-efficient preview: filename only (files live under workdir/.../snapshots/<context_id>/)."""
+    if not abs_path:
+        return None
+    return os.path.basename(abs_path).replace("\\", "/")
 
 
 def _get_default_browser() -> str:
@@ -159,11 +174,11 @@ def _replace_older_screen_injects_with_placeholder(
         if not isinstance(content, dict):
             continue
         preview = content.get("preview", "")
-        if preview == SCREEN_INJECT_PREVIEW:
+        if isinstance(preview, str) and preview.startswith(SCREEN_INJECT_PREVIEW):
             inject_indices.append(i)
-        elif preview == SCREEN_RAW_PREVIEW:
+        elif isinstance(preview, str) and preview.startswith(SCREEN_RAW_PREVIEW):
             raw_indices.append(i)
-        elif preview == SCREEN_ANNOTATED_PREVIEW:
+        elif isinstance(preview, str) and preview.startswith(SCREEN_ANNOTATED_PREVIEW):
             annotated_indices.append(i)
         elif isinstance(preview, str) and preview.startswith(SCREEN_ZOOMED_PREVIEW):
             zoomed_indices.append(i)
@@ -207,12 +222,12 @@ def _save_snapshots(
     annotated_img: Image.Image,
     zoomed_imgs: Optional[List[Tuple[str, Image.Image]]] = None,
 ) -> Dict[str, str]:
-    """Save debug images under agents/computer/snapshots/<context_id>/<timestamp>_*.png.
-    Returns dict of saved paths: {'raw': path, 'annotated': path, 'zoom_<key>': path, ...}
+    """Save debug PNGs under {workdir}/computer/snapshots/<context_id>/<timestamp>_*.png.
+    Returns absolute paths for disk use (e.g. dev log attach); RawMessage previews use filename only.
     """
     result: Dict[str, str] = {}
     try:
-        snapshots_base = files.get_abs_path("agents", "computer", "snapshots")
+        snapshots_base = storage_paths.computer_snapshots_dir()
         run_dir = os.path.join(snapshots_base, context_id or "default")
         os.makedirs(run_dir, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -544,22 +559,38 @@ class ComputerScreenInject(Extension):
 
         # Inject as separate messages so history can selectively keep/discard
         # All contents are now properly formatted as lists for LangChain compatibility
+        # Previews: optional filename only (saves tokens vs absolute paths).
         
         # 1. Context text (always kept as it's small and informative)
         context_msg = history.RawMessage(raw_content=context_content, preview=SCREEN_INJECT_PREVIEW)
         loop_data.history_output.append(history.OutputMessage(ai=False, content=context_msg))
         
         # 2. Raw screenshot (kept in history for before/after comparison)
-        raw_msg = history.RawMessage(raw_content=raw_img_content, preview=SCREEN_RAW_PREVIEW)
+        raw_msg = history.RawMessage(
+            raw_content=raw_img_content,
+            preview=_preview_with_optional_path(
+                SCREEN_RAW_PREVIEW, _snapshot_preview_basename(saved_paths.get("raw"))
+            ),
+        )
         loop_data.history_output.append(history.OutputMessage(ai=False, content=raw_msg))
         
         # 3. Annotated screenshot
-        annotated_msg = history.RawMessage(raw_content=annotated_img_content, preview=SCREEN_ANNOTATED_PREVIEW)
+        annotated_msg = history.RawMessage(
+            raw_content=annotated_img_content,
+            preview=_preview_with_optional_path(
+                SCREEN_ANNOTATED_PREVIEW, _snapshot_preview_basename(saved_paths.get("annotated"))
+            ),
+        )
         loop_data.history_output.append(history.OutputMessage(ai=False, content=annotated_msg))
 
         # 4. Zoomed screenshot (mouse region only)
         for z_key, z_content in zoomed_contents:
-            zoomed_msg = history.RawMessage(raw_content=z_content, preview=f"{SCREEN_ZOOMED_PREVIEW} {z_key}")
+            safe_key = z_key.replace("/", "_").replace("\\", "_")
+            zoom_path = saved_paths.get(f"zoom_{safe_key}")
+            zoom_preview = _preview_with_optional_path(
+                f"{SCREEN_ZOOMED_PREVIEW} {z_key}", _snapshot_preview_basename(zoom_path)
+            )
+            zoomed_msg = history.RawMessage(raw_content=z_content, preview=zoom_preview)
             loop_data.history_output.append(history.OutputMessage(ai=False, content=zoomed_msg))
 
         _replace_older_screen_injects_with_placeholder(loop_data.history_output)

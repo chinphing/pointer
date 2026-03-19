@@ -811,6 +811,14 @@ class Agent:
         # model class
         model = self.get_chat_model()
 
+        # development: dump full prompt to tmp/prompt_dumps/*.md (readable; images as placeholders)
+        try:
+            from python.helpers import dev_prompt_dump
+
+            dev_prompt_dump.maybe_dump_chat_prompt(self, messages)
+        except Exception:
+            pass
+
         # call model
         response, reasoning = await model.unified_call(
             messages=messages,

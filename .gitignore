@@ -42,9 +42,8 @@ agent_history.gif
 .claude/**
 .skills/**
 
-# ComputerUse debug snapshots (per-run screenshots)
+# ComputerUse (legacy repo paths; data now defaults to usr/workdir/computer/ — see agents/computer/storage_paths.py)
 agents/computer/snapshots/
-# ComputerUse partially-done files (per-session staged progress)
 agents/computer/extract_data/
 agents/computer/task_done/
 data/**

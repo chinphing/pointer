@@ -171,6 +171,16 @@ These environment variables automatically override the hardcoded defaults in `ge
 
 To use a different directory for A0 data (uploads, workdir, settings, etc.) instead of the default `~/azero`, set `A0_ROOT` or `A0_SET_a0_root_path` in your `.env`, e.g. `A0_ROOT=/path/to/your/azero`.
 
+### LLM prompt dumps (development UI)
+
+When **not** running Dockerized (`runtime.is_development()`), every call to the main chat model writes a **Markdown** file under `tmp/prompt_dumps/` with the full message list in reading order. Base64 images are replaced with short placeholders so the file stays small and you can **copy the whole file** into a text box for inspection.
+
+- Disable: set `A0_DEV_PROMPT_DUMP=0` (or `false` / `off`) in `.env`.
+- The console prints `[dev] LLM prompt dump → <path>` each time.
+
+> [!NOTE]
+> This also runs for other `call_chat_model` usages (e.g. document merge helpers), not only the main chat loop.
+
 ## Want to build your docker image?
 - You can use the `DockerfileLocal` to build your docker image.
 - Navigate to your project root in the terminal and run `docker build -f DockerfileLocal -t agent-zero-local --build-arg CACHE_DATE=$(date +%Y-%m-%d:%H:%M:%S) .`

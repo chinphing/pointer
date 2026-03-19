@@ -60,7 +60,9 @@
 | `tools/vision_common.py` | 共享逻辑：index_map/screen_info、resolve_index、get_coord_pos、scroll  clamping、LAST_VISION_ACTION_KEY、after_execution 钩子。 |
 | `tools/mouse.py`、`hotkey.py`、`modified_click.py`、`composite_action.py`、`wait.py` | 五个 vision 工具：从 vision_common 与 actions 执行点击、快捷键、修饰键+点击、组合操作、等待。 |
 | `coord_convert.py` | 可扩展的坐标还原：将模型输出的归一化坐标转为屏幕像素。内置 `qwen`（1000×1000）、`kimi`（1×1）、`pixel`；通过 `vision_coordinate_system` 配置项选择。 |
-| `snapshots/` | 调试用：每轮注入时会把当次的 raw、annotated、以及可选 zoom 图按 `snapshots/<context_id>/<timestamp>_raw.png` 等命名保存，便于排查问题；目录已加入 .gitignore。 |
+| `storage_paths.py` | 统一解析 **工作目录**（Settings 中的 `workdir_path`，默认 `usr/workdir`）下的 `computer/snapshots`、`computer/extract_data`、`computer/task_done`。**不再**写入仓库内 `agents/computer/` 下同名目录。 |
+| `snapshots/`（数据目录） | 实际路径：`{workdir}/computer/snapshots/<context_id>/`。每轮注入保存 raw / annotated / zoom 的 PNG。History 里图片消息的 `preview` 仅含 **`文件名`**（省 token；磁盘上仍按 context 分目录）。旧数据若在 `agents/computer/snapshots/` 可手动迁入对应 `workdir` 路径。 |
+| `extract_data/`、`task_done/`（数据目录） | 实际路径：`{workdir}/computer/extract_data/<context_id>/` 与 `{workdir}/computer/task_done/<context_id>/`，由 `task_data_memory.py` 使用。 |
 
 ## 依赖
 

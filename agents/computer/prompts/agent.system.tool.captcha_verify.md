@@ -4,11 +4,17 @@ Automate CAPTCHA using the current screenshot: you choose the method from what y
 
 **Use directly — do not call extract_data first.** When a CAPTCHA is visible, call **captcha_verify** immediately. The tool infers the verification type and requirement from the screenshot; you do not need to "read" or "extract" the CAPTCHA text beforehand. Do not use extract_data to "understand the CAPTCHA requirement" before using this tool.
 
-**How to choose the method (from the screenshot):**
+### Captcha Verification Protocol
 
-- **`type`** — Use when the screenshot shows: an image or area with **characters to type** (e.g. distorted letters/numbers), or a **simple question** (e.g. math), and a **text input box** where the answer must be entered. Typical wording nearby: “Enter the characters above”, “Type the text in the image”, “Answer the question”.
-- **`click`** — Use when the screenshot shows: a **grid or set of images/tiles** that the user must **click to select** (e.g. “Select all that contain …”, “Click the squares with …”). The task is to choose one or more positions on the image by clicking.
-- **`drag`** — Use when the screenshot shows: a **slider**, **puzzle piece**, or other control that must be **dragged** (e.g. “Drag the slider”, “Slide to complete”). The task is a single drag motion, not typing or multiple clicks.
+- **Mandatory Pre-check**: Before calling `captcha_verify`, analyze the prompt in your thoughts.
+- **Verb-to-Method Mapping** (use **both** instruction text and screenshot; if they conflict, prefer what the UI actually requires—verbs still disambiguate similar layouts):
+  - **`drag`** — Verbs: Drag / Slide / Puzzle / Move / Exchange. **UI:** slider, puzzle piece, or other control that must be dragged in one motion (not typing or a sequence of unrelated clicks). **Typical wording:** “Drag the slider”, “Slide to complete”.
+  - **`click`** — Verbs: Click / Select / Check / Choose. **UI:** grid or set of images/tiles to select by clicking; one or more click positions on the challenge. **Typical wording:** “Select all that contain …”, “Click the squares with …”.
+  - **`type`** — Verbs: Input / Type / Answer / Fill. **UI:** characters or image to read, or a simple question (e.g. math), **plus** a **text input** for the answer. **Typical wording:** “Enter the characters above”, “Type the text in the image”, “Answer the question”.
+- **Thought Requirements**: Explicitly state in thoughts:
+  - Captcha Prompt Quote
+  - Key Verb Identified
+  - Selected Method & Justification
 
 Methods:
 - **`type`** — Params: `index_captcha_area`, `index_input_area`, `remark`. Fills the answer into the input at `index_input_area`.

@@ -22,7 +22,7 @@
 
 1. **多模态输入**：每轮调用大模型前，通过扩展向 prompt 注入 2～n 张图片（原始截图、带序号标注图、可选的 2× 象限放大图），模型基于视觉理解与推理并生成下一步工具调用。
 2. **截图**：使用本目录下 `screen.py` 的 `screenshot_current_monitor()` 获取当前光标所在显示器的截图及 bbox。
-3. **标注与序号**：使用 `som_util.py` 的 `BoxAnnotator` 做元素检测，`sort_boxes_lrtb` 按从左到右、从上到下排序后标注序号；序号标签优先在 bbox 正上方居中，空间不足时在正下方居中。
+3. **标注与序号**：`som_util.py` 的 `BoxAnnotator` 通过 **HTTP** 调用 `POST /api/v1/annotate/all`（RF-DETR + 可选 OCR、去重与排序由服务端完成），返回带序号的标注图与 `boxes`；本仓库不再加载本地检测模型。基址由环境变量 `COMPUTER_ANNOTATE_API_BASE` 配置（默认 `http://127.0.0.1:8000`）。
 4. **可选象限放大**：将标注图按 2×2 分为左上、右上、右下、左下四块；若用户或上一轮回复中出现方位词（如「左上」「top_left」等），则把对应象限裁剪并 2 倍放大后一并作为输入。
 5. **工具**：拆分为 **mouse**（click_index、double_click_index、click_at、scroll_at_current 等）、**hotkey**（press_keys）、**modified_click**（modified_click_index、modified_click_at）、**composite_action**（type_text_at_index、type_text_at、scroll_at_index）、**wait**。优先用序号；若目标元素无序号，则用坐标（模型输出归一化坐标，由 `coord_convert.py` 按配置的坐标系还原为屏幕像素）。**调用优先级**：尽量少调用 → 优先 composite_action，其次 hotkey/modified_click，再次 mouse；需要延迟时用 wait。**阅读与数据**：在每次滚动前用 **extract_data:extract**（instruction + task_index）将当前可见内容追加到任务临时文件；当某子任务的全部片段提取完毕，调用 **task_done**（task_index）；有碎片时会自动合并并保存为正式文件。
 
@@ -31,7 +31,7 @@
 ```
 用户消息 → message_loop_prompts_after 扩展（仅 profile=computer）
          → screenshot_current_monitor() → 图1 原图
-         → BoxAnnotator.predict_and_annotate_all → 图2 标注图（带序号）
+         → BoxAnnotator (HTTP annotate API) → 图2 标注图（带序号）
          → 可选：根据方位词裁剪 2× 象限 → 图3..n
          → 构建 index_map（屏幕坐标）写入 agent.data
          → 将图1+图2..n 以 RawMessage 追加到 loop_data.history_output
@@ -54,7 +54,7 @@
 | `prompts/agent.system.os.linux.md` | **Linux 专用**：快捷键参考（Ctrl 修饰键、地址栏/标签/刷新等快捷键）。 |
 | `os_prompts.py` | OS 提示词加载器：根据当前操作系统动态加载对应的快捷键参考文件。 |
 | `screen.py` | 截图：`screenshot_current_monitor()` 返回 (PIL Image, (left, top, width, height))；`encode_image` 等。 |
-| `som_util.py` | `sort_boxes_lrtb(boxes, height)` 按左→右、上→下排序；`BoxAnnotator` 预测并标注，标签位置上/下居中。 |
+| `som_util.py` | `SomAnnotator` 协议 + `BoxAnnotator`：multipart 调用 `/api/v1/annotate/all`，解析 `boxes` 与 PNG `image_base64`；响应 `width`/`height` 或解码图尺寸须与输入截图一致，否则抛 `AnnotateApiError`。 |
 | `actions.py` | `ActionTools`：`_click`、`_double_click`、`_type_text` 等底层操作（pyautogui / pyperclip）。 |
 | `extensions/message_loop_prompts_after/_10_computer_screen_inject.py` | 屏幕注入扩展：截图、predict_and_annotate_all（单张标注图）、可选象限、写 index_map。历史截图管理：保留原始图用于对比，剔除标注图与放大图以节省 token。 |
 | `tools/vision_common.py` | 共享逻辑：index_map/screen_info、resolve_index、get_coord_pos、scroll  clamping、LAST_VISION_ACTION_KEY、after_execution 钩子。 |
@@ -67,46 +67,23 @@
 ## 依赖
 
 - **截图与操作**：`mss`、`pyautogui`、`PIL`、`pyperclip`
-- **标注与检测**：`cv2`、`numpy`、`rfdetr`、`paddle`/`paddleocr`（som_util 中的 RF-DETR 权重路径见 `BoxAnnotator`）
+- **标注**：`requests`（`som_util.BoxAnnotator` 调用外部 annotate 服务；服务需单独部署并监听 `COMPUTER_ANNOTATE_API_BASE`）
+- **滚动/热力图等**：`cv2`、`numpy`、`scipy`（如 `scroll_heatmap.py`、`mouse_path.py` 中 `mouse_path_spline`）
 
-### macOS：pyharp / libnetcdf 报错
+### Annotate 服务环境变量
 
-若出现 `Library not loaded: ... libnetcdf.22.dylib`（来自 `pyharp`，多为 paddle/paddleocr 的传递依赖），需安装 Homebrew 的 netcdf 并视情况做符号链接：
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `COMPUTER_ANNOTATE_API_BASE` | `http://127.0.0.1:8000` | 仅基址；路径固定为 `/api/v1/annotate/all` |
+| `COMPUTER_ANNOTATE_TIMEOUT` | `120` | 请求超时（秒，浮点可解析） |
 
-```bash
-brew install netcdf
-```
+屏幕注入在异步上下文中通过 `asyncio.to_thread` 调用阻塞式 `requests.post`，避免卡住事件循环。
 
-若安装后是 `libnetcdf.23.dylib` 等其它版本，而程序仍找 `libnetcdf.22.dylib`，可在 netcdf 的 lib 目录下为当前版本创建 22 的符号链接（以 23 为例）：
+- **rtree**：`_10_computer_screen_inject.py` 用 rtree 在提示词中列出「距鼠标最近的若干已标注元素」的归一化 bbox。`pip install rtree` 需系统先安装 libspatialindex（macOS: `brew install spatialindex`）。
 
-```bash
-cd "$(brew --prefix netcdf)/lib" && ln -sf libnetcdf.23.dylib libnetcdf.22.dylib
-```
+## 标注图与序号
 
-（将 `23` 换成你本机 `ls libnetcdf.*.dylib` 看到的版本号。）
-
-- **rtree**：标签放置时用 rtree 快速查询重叠/最近邻。`pip install rtree` 需系统先安装 libspatialindex（macOS: `brew install spatialindex`）。
-
-## 标注与标签放置策略
-
-`som_util.py` 中的 `BoxAnnotator` 负责检测交互元素并标注序号。标签放置采用「按重叠面积选方向 + 50% 过挤兜底 + rtree 加速」：
-
-1. **四方向按覆盖比例选**：对每个方向计算该方向标签对「其他元素」的覆盖比例之和（覆盖比例 = 交集面积/该其它元素面积），在**边界内**的候选中选取**总覆盖比例最小**的方向；同分时保持上→下→右→左顺序。
-2. **50% 过挤则框内**：每个方向记录「对单个其它元素的最大覆盖比例」（分母为其它元素面积）。若四个方向该最大比例均 > 50%，则在当前元素框内左上角放置标签。
-3. **边界**：标签背景不得超出图像范围。
-4. **颜色差异化**：相邻序号使用色相间隔较大的颜色。
-5. **rtree 性能优化**：重叠面积累加时不遍历全部元素，仅用 rtree 取「与标签相交的至多 5 个」+「最近邻 5 个」参与计算（依赖 `rtree`，需安装 libspatialindex）。
-
-### 行列标签冲突优化方案
-
-针对上下两行或并列两列元素的标签重叠问题，可进一步优化：
-
-- **行感知放置**：检测元素是否在同一行（y 坐标差 < 行高），如果是，优先上下放置标签，而非左右
-- **列感知放置**：检测元素是否在同一列（x 坐标差 < 列宽），如果是，优先左右放置标签，而非上下
-- **动态偏移**：当相邻元素标签可能冲突时，向远离相邻元素的方向微调标签位置（如 10-20px）
-- **标签尺寸分级**：对密集区域使用更小的字号，或在元素 hover 时才显示大标签
-
-当前实现已包含基础的距离检测和优先级调整；如需更强的行列感知，可在 `annotate()` 中增加行/列聚类逻辑。
+检测、去重、排序与绘制均由 **annotate 服务端**完成（与本仓库旧版本地 `BoxAnnotator.annotate` 行为可能略有差异）。客户端要求返回图与 JSON 宽高与输入截图一致；再在本地叠加鼠标/焦点图层后发往模型。模型侧阅读方式仍以注入扩展中的说明为准（按颜色与位置匹配序号与目标元素）。
 
 ## 运行前准备
 

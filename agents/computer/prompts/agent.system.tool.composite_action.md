@@ -6,6 +6,8 @@ Use for **one-call combos** that achieve the goal in a single tool call: click+t
 
 **Reminder:** Click and type can be done **in one call** with composite_action (`type_text_at_index`, `type_text_at`, or `type_text_at_focused_input` when the input already has focus). Do not call mouse:click_index then type separately — use one composite_action call.
 
+**Index selection:** For any method that takes **`index`**, when labels look ambiguous (e.g. same background), prefer the number drawn **inside** the target element’s box (inner corners or inner top/bottom/left/right mid-edge), as in **computer_usage**.
+
 Methods:
 - **`type_text_at_index`** (`index`, `goal`, `text`, optional `clear_first`) — Clicks the element at index to focus, then types. Use when the target has an index; do not call mouse:click_index first. `clear_first`: if true, selects all then types (replacing existing content).
 - **`type_text_at`** (`goal`, `x`, `y`, `text`) — Clicks at normalized coordinates then types. Use when the target has no index; derive x, y from a reference.

@@ -25,17 +25,23 @@ import screen as screen_mod  # noqa: E402
 from actions import ActionTools  # noqa: E402
 import dati_client  # noqa: E402
 import mouse_path  # noqa: E402
+from mouse_move import CompositeMove, SimpleMove  # noqa: E402
 
 from tools import vision_common as vc  # noqa: E402
 
 # 轨迹每段插值点数、移动间隔（秒）
 BEZIER_POINTS = 10
+# 弯曲度：0 直线，1 为默认强度（见 mouse_path）；None 的 bend_sign 表示每段随机左右弯
+MOUSE_PATH_CURVATURE = 1.0
+MOUSE_PATH_BEND_SIGN = None  # 设为 +1 / -1 可固定弯向
+# p1/p2 切向+法向随机微扰（像素）；0 关闭；None 使用 mouse_path 模块默认（约 2px）
+MOUSE_PATH_CONTROL_JITTER_PX = 2.0
 MOVE_INTERVAL = 0.03
 DRAG_MOVE_INTERVAL = 0.02
 # 每次移动到目标前的随机等待（秒），模拟人工节奏
-PRE_MOVE_DELAY_MIN, PRE_MOVE_DELAY_MAX = 0.5, 1.0
+PRE_MOVE_DELAY_MIN, PRE_MOVE_DELAY_MAX = 0.5, 1.5
 # 单次移动总时长范围（秒）
-MOVE_TOTAL_TIME_MIN, MOVE_TOTAL_TIME_MAX = 0.1, 0.35
+MOVE_TOTAL_TIME_MIN, MOVE_TOTAL_TIME_MAX = 0.3, 1
 # 滑块滑动总时长（秒）：后端常校验耗时，过短会被判异常，建议 0.35～0.8
 SLIDER_TOTAL_TIME_MIN, SLIDER_TOTAL_TIME_MAX = 0.35, 0.75
 # 轨迹/时间扰动：路径点垂直方向抖动像素、每段间隔随机波动比例
@@ -43,6 +49,34 @@ PATH_JITTER_PX = 2
 INTERVAL_PERTURB_FACTOR = 0.2
 CLICK_DELAY_MIN, CLICK_DELAY_MAX = 1.0, 5.0
 QUERY_TIMEOUT = 60.0
+
+# 点选/非抖动段：缓动 + 时间扰动，路径不抖动（CompositeMove path_jitter_max_px=0）
+_CAPTCHA_MOVE_COMPOSITE = CompositeMove(
+    path_jitter_max_px=0.0,
+    default_interval=MOVE_INTERVAL,
+    interval_perturb_factor=INTERVAL_PERTURB_FACTOR,
+)
+# 滑块主轨迹：贝塞尔 + 法向抖动 + 同上间隔策略
+_CAPTCHA_MOVE_SLIDER = CompositeMove(
+    path_jitter_max_px=PATH_JITTER_PX,
+    default_interval=MOVE_INTERVAL,
+    interval_perturb_factor=INTERVAL_PERTURB_FACTOR,
+)
+_CAPTCHA_MOVE_SIMPLE = SimpleMove(
+    default_interval=DRAG_MOVE_INTERVAL,
+    curvature=MOUSE_PATH_CURVATURE,
+    bend_sign=MOUSE_PATH_BEND_SIGN,
+    control_jitter_px=MOUSE_PATH_CONTROL_JITTER_PX,
+)
+
+
+def _apply_mouse_plan(path: List[Tuple[float, float]], intervals: List[float]) -> None:
+    """按 mouse_move 产出的轨迹与间隔执行指针移动（与轨迹生成解耦）。"""
+    import pyautogui
+
+    for (x, y), dt in zip(path, intervals):
+        pyautogui.moveTo(int(round(x)), int(round(y)))
+        time.sleep(dt)
 
 
 def _captcha_log(agent: Any, message: str) -> None:
@@ -189,128 +223,6 @@ def _relative_to_screen(
     return [[left + rx, top + ry] for rx, ry in relative_points]
 
 
-def _ease_out_intervals(n: int, total_time: float) -> List[float]:
-    """先快后慢：返回 n 个间隔（秒），和为 total_time。前期间隔短、后期间隔长，更接近人类移动。"""
-    if n <= 0:
-        return []
-    if n == 1:
-        return [total_time]
-    import math
-    intervals = []
-    for i in range(n):
-        progress_after = (i + 1) / n
-        progress_before = i / n
-        t_after = 1.0 - math.sqrt(max(0, 1.0 - progress_after))
-        t_before = 1.0 - math.sqrt(max(0, 1.0 - progress_before))
-        intervals.append(total_time * (t_after - t_before))
-    return intervals
-
-
-def _ease_in_out_intervals(n: int, total_time: float) -> List[float]:
-    """起步和结束都慢、中间快（ease-in-out），加速度变化更明显，适合滑块轨迹校验。"""
-    if n <= 0:
-        return []
-    if n == 1:
-        return [total_time]
-    import math
-    # 平滑的 ease-in-out：前半段 ease-in，后半段 ease-out
-    intervals = []
-    for i in range(n):
-        progress_after = (i + 1) / n
-        progress_before = i / n
-        # 使用 smoothstep 近似: 3t^2 - 2t^3，归一化时间 t 与 progress 关系
-        def progress_to_t(p: float) -> float:
-            if p <= 0.5:
-                return 2 * p * p
-            return 1 - 2 * (1 - p) * (1 - p)
-        t_after = progress_to_t(progress_after)
-        t_before = progress_to_t(progress_before)
-        intervals.append(total_time * (t_after - t_before))
-    return intervals
-
-
-def _perturb_intervals(intervals: List[float], factor: float = INTERVAL_PERTURB_FACTOR) -> List[float]:
-    """对每段间隔加随机扰动，总和不变，避免匀速感。"""
-    if not intervals or factor <= 0:
-        return intervals
-    n = len(intervals)
-    total = sum(intervals)
-    # 每段乘以 (1 + factor * (-1..1))，再按比例缩放回 total
-    perturbed = [
-        max(0.005, intervals[i] * (1.0 + factor * (2 * random.random() - 1)))
-        for i in range(n)
-    ]
-    scale = total / sum(perturbed)
-    return [p * scale for p in perturbed]
-
-
-def _add_path_jitter(
-    points: List[Tuple[float, float]],
-    max_px: float = PATH_JITTER_PX,
-    skip_first_last: bool = True,
-) -> List[Tuple[float, float]]:
-    """对路径中间点加垂直于运动方向的轻微抖动，轨迹更接近人手。首尾点可选保留。"""
-    if not points or max_px <= 0:
-        return points
-    n = len(points)
-    out: List[Tuple[float, float]] = []
-    for i in range(n):
-        x, y = points[i]
-        if skip_first_last and (i == 0 or i == n - 1):
-            out.append((x, y))
-            continue
-        # 运动方向：从前一点到后一点
-        if i == 0:
-            dx, dy = points[1][0] - x, points[1][1] - y
-        elif i == n - 1:
-            dx, dy = x - points[i - 1][0], y - points[i - 1][1]
-        else:
-            dx = (points[i + 1][0] - points[i - 1][0]) / 2.0
-            dy = (points[i + 1][1] - points[i - 1][1]) / 2.0
-        length = (dx * dx + dy * dy) ** 0.5
-        if length < 1e-6:
-            out.append((x, y))
-            continue
-        # 单位法向 (垂直方向)，加随机正负
-        nx, ny = -dy / length, dx / length
-        if random.random() < 0.5:
-            nx, ny = -nx, -ny
-        jitter = max_px * (2 * random.random() - 1)
-        out.append((x + nx * jitter, y + ny * jitter))
-    return out
-
-
-def _move_along_path(
-    points: List[Tuple[float, float]],
-    interval: Optional[float] = None,
-    total_time: Optional[float] = None,
-    ease_in_out: bool = False,
-    perturb_intervals: bool = True,
-) -> None:
-    """沿路径逐点移动。若传 total_time 则整段在 total_time 内完成，采用缓动间隔并可加时间扰动；否则用固定 interval。"""
-    import pyautogui
-    if not points:
-        return
-    if total_time is not None and total_time > 0:
-        intervals = (
-            _ease_in_out_intervals(len(points), total_time)
-            if ease_in_out
-            else _ease_out_intervals(len(points), total_time)
-        )
-        if perturb_intervals:
-            intervals = _perturb_intervals(intervals, INTERVAL_PERTURB_FACTOR)
-    else:
-        if interval is None:
-            interval = MOVE_INTERVAL
-        intervals = [interval] * len(points)
-    for i, (x, y) in enumerate(points):
-        tx, ty = int(round(x)), int(round(y))
-        pyautogui.moveTo(tx, ty)
-        time.sleep(intervals[i])
-        actual = pyautogui.position()
-        print(f"[_move_along_path] step {i + 1}/{len(points)} target=({tx}, {ty}) actual=({actual[0]}, {actual[1]}) delta=({actual[0] - tx}, {actual[1] - ty})")
-
-
 def _do_type(
     tool: "CaptchaVerifyTool",
     args: Dict[str, Any],
@@ -387,10 +299,18 @@ def _do_click(
         # 每次移动前随机等待，模拟人工节奏（参考 crack 逻辑）
         time.sleep(PRE_MOVE_DELAY_MIN + random.random() * (PRE_MOVE_DELAY_MAX - PRE_MOVE_DELAY_MIN))
         current = pyautogui.position()
-        path_pts = mouse_path.mouse_path([current[0], current[1]], target, num_points=BEZIER_POINTS)
-        # 单次移动总时长 0.1~0.35s，按路径点数均分 interval
+        path_pts = mouse_path.mouse_path(
+            [current[0], current[1]],
+            target,
+            num_points=BEZIER_POINTS,
+            curvature=MOUSE_PATH_CURVATURE,
+            bend_sign=MOUSE_PATH_BEND_SIGN,
+            control_jitter_px=MOUSE_PATH_CONTROL_JITTER_PX,
+        )
+        # 单次移动总时长 0.1~0.35s；间隔由 CompositeMove（ease-out + 时间扰动）分配
         total_time = MOVE_TOTAL_TIME_MIN + random.random() * (MOVE_TOTAL_TIME_MAX - MOVE_TOTAL_TIME_MIN)
-        _move_along_path(path_pts, total_time=total_time)
+        p, iv = _CAPTCHA_MOVE_COMPOSITE.plan(path_pts, total_time=total_time)
+        _apply_mouse_plan(p, iv)
         actions._click(target)
     _captcha_log(tool.agent, "操作结束")
     return Response(
@@ -438,30 +358,40 @@ def _do_drag(
     full_path = mouse_path.mouse_path_through_points(
         [[float(p[0]), float(p[1])] for p in screen_points],
         num_points_per_segment=BEZIER_POINTS,
+        curvature=MOUSE_PATH_CURVATURE,
+        bend_sign=MOUSE_PATH_BEND_SIGN,
+        control_jitter_px=MOUSE_PATH_CONTROL_JITTER_PX,
     )
     if not full_path:
         return Response(message="Path generation failed.", break_loop=False)
-    if is_slider:
-        full_path = _add_path_jitter(full_path, max_px=PATH_JITTER_PX, skip_first_last=True)
-
     import pyautogui
     time.sleep(PRE_MOVE_DELAY_MIN + random.random() * (PRE_MOVE_DELAY_MAX - PRE_MOVE_DELAY_MIN))
     current = pyautogui.position()
-    to_start = mouse_path.mouse_path([current[0], current[1]], [full_path[0][0], full_path[0][1]], num_points=BEZIER_POINTS)
+    to_start = mouse_path.mouse_path(
+        [current[0], current[1]],
+        [full_path[0][0], full_path[0][1]],
+        num_points=BEZIER_POINTS,
+        curvature=MOUSE_PATH_CURVATURE,
+        bend_sign=MOUSE_PATH_BEND_SIGN,
+        control_jitter_px=MOUSE_PATH_CONTROL_JITTER_PX,
+    )
     total_time = MOVE_TOTAL_TIME_MIN + random.random() * (MOVE_TOTAL_TIME_MAX - MOVE_TOTAL_TIME_MIN)
-    _move_along_path(to_start, total_time=total_time)
+    p0, iv0 = _CAPTCHA_MOVE_COMPOSITE.plan(to_start, total_time=total_time)
+    _apply_mouse_plan(p0, iv0)
     pyautogui.mouseDown()
     time.sleep(0.05)
     if is_slider:
         slider_time = SLIDER_TOTAL_TIME_MIN + random.random() * (SLIDER_TOTAL_TIME_MAX - SLIDER_TOTAL_TIME_MIN)
-        _move_along_path(
+        ps, ivs = _CAPTCHA_MOVE_SLIDER.plan(
             full_path[1:],
             total_time=slider_time,
             ease_in_out=True,
             perturb_intervals=True,
         )
+        _apply_mouse_plan(ps, ivs)
     else:
-        _move_along_path(full_path[1:], interval=DRAG_MOVE_INTERVAL)
+        pd, ivd = _CAPTCHA_MOVE_SIMPLE.plan(full_path[1:], interval=DRAG_MOVE_INTERVAL)
+        _apply_mouse_plan(pd, ivd)
     time.sleep(0.05)
     pyautogui.mouseUp()
     time.sleep(0.1)

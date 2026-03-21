@@ -4,6 +4,8 @@ Use for **modifier+click** to multi-select: **Cmd/Ctrl+click** (add non-contiguo
 
 **Call priority:** Prefer **modified_click** when selecting multiple items in one call instead of multiple single clicks.
 
+**Index selection:** For each value in **`indices`**, prefer the **inner** label (number inside that row/control’s bbox: inner corners or inner top/bottom/left/right mid-edge) when backgrounds are similar; see **computer_usage**.
+
 **Modifier behavior:**
 - **Cmd (macOS) / Ctrl (Windows/Linux) + click** — Add each clicked item to the selection (non-contiguous). Use when selecting scattered items (e.g. rows 2, 5, 7). Pass all indices in `indices` (e.g. `[2, 5, 7]`); do **not** set `range_select`.
 - **Shift + click** — Select a contiguous range from first to last. Use when selecting "from item A to item B" (e.g. rows 3 through 8). Pass **only the first and last index** in order as `indices` (e.g. `[3, 8]`) and set **`range_select`: true**. The tool will click the first item, then Shift+click the last item so the UI selects the range.

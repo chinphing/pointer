@@ -1,12 +1,13 @@
 """
 Inject current screen images into the prompt for the computer profile.
 Image order: (1) raw screenshot, (2) annotated image with indices, (3) zoom: 300px region around mouse, 3× magnification.
-Uses predict_and_annotate_all for detection; builds index_map (screen coordinates) for vision tools (mouse, hotkey, modified_click, composite_action, wait).
+Annotation: `som_util.BoxAnnotator` calls POST /api/v1/annotate/all (see COMPUTER_ANNOTATE_API_BASE); builds index_map for vision tools.
 Saves images under {workdir}/computer/snapshots/<context_id>/ (see storage_paths.py).
 Only the latest screen inject is sent to the LLM; earlier ones are replaced with a text placeholder to reduce token usage.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import locale
 import os
@@ -140,7 +141,7 @@ def _build_environment_text(screen_width: int = 0, screen_height: int = 0) -> st
     return "Environment: " + "; ".join(parts) + "."
 
 
-# Reuse BoxAnnotator (and its RF-DETR model) across turns to avoid repeated model load
+# Reuse HTTP annotate client across turns (no heavy local model)
 _annotator_cache: Optional[Any] = None
 
 
@@ -313,8 +314,12 @@ class ComputerScreenInject(Extension):
         err_preview = ""
         annotator = _get_annotator()
         try:
-            annotated_img, boxes_sorted = annotator.predict_and_annotate_all(
-                img, threshold=0.1, overlap_threshold=0.1
+            annotated_img, boxes_sorted = await asyncio.to_thread(
+                annotator.predict_and_annotate_all,
+                img,
+                threshold=0.1,
+                overlap_threshold=0.1,
+                padding=3,
             )
             boxes_sorted = list(boxes_sorted)
         except Exception as e:

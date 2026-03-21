@@ -14,8 +14,6 @@ from typing import Any
 from agent import Agent
 from python.helpers.tool import Tool, Response
 
-from langchain_core.messages import HumanMessage, SystemMessage
-
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _COMPUTER_DIR = os.path.abspath(os.path.join(_THIS_DIR, ".."))
 if _COMPUTER_DIR not in sys.path:
@@ -159,12 +157,14 @@ class ExtractDataTool(Tool):
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
         ]
         try:
-            response, _ = await self.agent.call_utility_model(
-                messages=[
-                    SystemMessage(content=system),
-                    HumanMessage(content=user_content),
-                ],
+            # Same argument shape as Agent.call_utility_model → model.unified_call(system_message=, user_message=).
+            # user_message is multimodal list (text + image) for vision utility models.
+            model = self.agent.get_utility_model()
+            response, _reasoning = await model.unified_call(
+                system_message=system,
+                user_message=user_content,
                 explicit_caching=False,
+                rate_limiter_callback=self.agent.rate_limiter_callback,
             )
         except Exception as e:
             return Response(message=f"Extraction call failed: {e}", break_loop=False)

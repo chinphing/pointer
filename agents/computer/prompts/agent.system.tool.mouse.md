@@ -1,6 +1,6 @@
 ### mouse
 
-Use for clicks, hover, and scroll at current cursor. Prefer **index-based** when the target has an index on the annotated image; use **coordinate-based** only when the target has no index (see coordinate-based principles in computer_usage).
+Use for clicks, hover, and scroll at current cursor. Prefer **index-based** when the target has an index on the annotated image; use **coordinate-based** only when the target has no index (see coordinate-based principles in computer_usage). When choosing **`index`**, if several numbers could apply (e.g. similar label backgrounds), pick the one whose badge lies **inside** the target control’s rectangle — inner **corners** or inner **top / bottom / left / right** edge centers are valid; avoid outer-only labels when an inner label exists for the same target.
 
 **Call priority:** Use this tool when a single mouse action is needed. Prefer **composite_action** or **hotkey** or **modified_click** when one call achieves the goal with fewer tool invocations.
 

@@ -28,7 +28,7 @@ class HotkeyTool(Tool):
         vc.vision_after_execution(
             self.agent,
             self.name,
-            (self.method or "").strip(),
+            "",
             self.args or {},
             (response.message or "").strip(),
         )
@@ -46,9 +46,6 @@ class HotkeyTool(Tool):
         goal = str(args.get("goal", "")).strip()
         if not goal:
             return Response(message="Missing required 'goal' in tool_args.", break_loop=False)
-        method = (self.method or "").strip()
-        if method != "press_keys":
-            return Response(message="Only method 'press_keys' is supported. Provide goal and keys.", break_loop=False)
         keys = args.get("keys")
         if not keys:
             return Response(message='Missing \'keys\' in tool_args (e.g. ["ctrl", "c"]).', break_loop=False)

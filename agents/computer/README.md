@@ -24,7 +24,7 @@
 2. **截图**：使用本目录下 `screen.py` 的 `screenshot_current_monitor()` 获取当前光标所在显示器的截图及 bbox。
 3. **标注与序号**：`som_util.py` 的 `BoxAnnotator` 通过 **HTTP** 调用 `POST /api/v1/annotate/all`（RF-DETR + 可选 OCR、去重与排序由服务端完成），返回带序号的标注图与 `boxes`；本仓库不再加载本地检测模型。基址由环境变量 `COMPUTER_ANNOTATE_API_BASE` 配置（默认 `http://127.0.0.1:8000`）。
 4. **可选象限放大**：将标注图按 2×2 分为左上、右上、右下、左下四块；若用户或上一轮回复中出现方位词（如「左上」「top_left」等），则把对应象限裁剪并 2 倍放大后一并作为输入。
-5. **工具**：拆分为 **mouse**（click_index、double_click_index、click_at、scroll_at_current 等）、**hotkey**（press_keys）、**modified_click**（modified_click_index、modified_click_at）、**composite_action**（type_text_at_index、type_text_at、scroll_at_index）、**wait**。优先用序号；若目标元素无序号，则用坐标（模型输出归一化坐标，由 `coord_convert.py` 按配置的坐标系还原为屏幕像素）。**调用优先级**：尽量少调用 → 优先 composite_action，其次 hotkey/modified_click，再次 mouse；需要延迟时用 wait。**阅读与数据**：在每次滚动前用 **extract_data:extract**（instruction + task_index）将当前可见内容追加到任务临时文件；当某子任务的全部片段提取完毕，调用 **task_done**（task_index）；有碎片时会自动合并并保存为正式文件。
+5. **工具**：拆分为 **mouse**（click_index、double_click_index、click_at、scroll_at_current 等）、**hotkey**（`goal` + `keys`）、**modified_click**（modified_click_index、modified_click_at）、**composite_action**（type_text_at_index、type_text_at、scroll_at_index）、**wait**。优先用序号；若目标元素无序号，则用坐标（模型输出归一化坐标，由 `coord_convert.py` 按配置的坐标系还原为屏幕像素）。**调用优先级**：尽量少调用 → 优先 composite_action，其次 hotkey/modified_click，再次 mouse；需要延迟时用 wait。**阅读与数据**：在每次滚动前用 **extract_data:extract**（instruction + task_index）将当前可见内容追加到任务临时文件；当某子任务的全部片段提取完毕，调用 **task_done**（task_index）；有碎片时会自动合并并保存为正式文件。
 
 ## 架构与数据流
 
@@ -125,7 +125,7 @@ ComputerUse 支持 macOS、Windows 和 Linux，每轮屏幕注入时会自动检
 - **Windows**: `prompts/agent.system.os.windows.md` — 使用 `ctrl` 作为主要修饰键  
 - **Linux**: `prompts/agent.system.os.linux.md` — 使用 `ctrl` 作为主要修饰键
 
-模型在生成快捷键时会根据当前 OS 自动选择正确的修饰键（如 `press_keys ["command", "c"]` vs `["ctrl", "c"]`），确保操作兼容性。
+模型在生成快捷键时会根据当前 OS 自动选择正确的修饰键（在 **hotkey** 的 `tool_args` 中填写 `keys`，例如 `["command", "c"]` 或 `["ctrl", "c"]`），确保操作兼容性。
 
 - **配置层面**：在项目配置中把 **chat_model_vision** 设为 `true`（默认多为 true）。`initialize_agent()` 会把它赋给主 chat 模型的 `ModelConfig.vision`。若为 false，系统不会在 system prompt 里追加 vision 相关说明，且实际调用时通常也不会传图。
 - **模型能力**：所用 chat 模型本身必须支持图像输入（例如 GPT-4o、Claude 3、Gemini 等多模态模型）。若选用纯文本模型，即使 `chat_model_vision=true`，接口也可能报错或忽略图片。

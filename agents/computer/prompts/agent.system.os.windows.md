@@ -4,20 +4,20 @@ Primary modifier: `ctrl`
 
 | Action | Shortcut | Tool Usage |
 |---|---|---|
-| Select All | `ctrl+a` | `press_keys ["ctrl","a"]` |
-| Copy | `ctrl+c` | `press_keys ["ctrl","c"]` |
-| Paste | `ctrl+v` | `press_keys ["ctrl","v"]` |
-| Cut | `ctrl+x` | `press_keys ["ctrl","x"]` |
-| Focus Address Bar | `ctrl+l` | `press_keys ["ctrl","l"]` |
-| New Tab | `ctrl+t` | `press_keys ["ctrl","t"]` |
-| Close Tab | `ctrl+w` | `press_keys ["ctrl","w"]` |
-| Close Window | `alt+f4` | `press_keys ["alt","f4"]` |
-| Refresh | `ctrl+r` or `f5` | `press_keys ["ctrl","r"]` |
-| Find | `ctrl+f` | `press_keys ["ctrl","f"]` |
-| Page Down / Scroll down | `space` | `press_keys ["space"]` |
-| Page Up / Scroll up | `shift+space` | `press_keys ["shift","space"]` |
-| Scroll to bottom | `ctrl+end` | `press_keys ["ctrl","end"]` |
-| Scroll to top | `ctrl+home` | `press_keys ["ctrl","home"]` |
+| Select All | `ctrl+a` | `keys ["ctrl","a"]` |
+| Copy | `ctrl+c` | `keys ["ctrl","c"]` |
+| Paste | `ctrl+v` | `keys ["ctrl","v"]` |
+| Cut | `ctrl+x` | `keys ["ctrl","x"]` |
+| Focus Address Bar | `ctrl+l` | `keys ["ctrl","l"]` |
+| New Tab | `ctrl+t` | `keys ["ctrl","t"]` |
+| Close Tab | `ctrl+w` | `keys ["ctrl","w"]` |
+| Close Window | `alt+f4` | `keys ["alt","f4"]` |
+| Refresh | `ctrl+r` or `f5` | `keys ["ctrl","r"]` |
+| Find | `ctrl+f` | `keys ["ctrl","f"]` |
+| Page Down / Scroll down | `space` | `keys ["space"]` |
+| Page Up / Scroll up | `shift+space` | `keys ["shift","space"]` |
+| Scroll to bottom | `ctrl+end` | `keys ["ctrl","end"]` |
+| Scroll to top | `ctrl+home` | `keys ["ctrl","home"]` |
 
 Notes:
 - Prefer shortcuts over clicking UI buttons.

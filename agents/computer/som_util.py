@@ -18,6 +18,29 @@ DEFAULT_API_BASE = "http://127.0.0.1:8000"
 DEFAULT_TIMEOUT_SEC = 120.0
 ANNOTATE_PATH = "/api/v1/annotate/all"
 
+# BGR palette (legacy OpenCV annotator / annotate service order). Convert with `annotate_palette_rgb` for PIL (RGB).
+ANNOTATE_BGR_PALETTE: Tuple[Tuple[int, int, int], ...] = (
+    (0, 0, 255),
+    (0, 255, 0),
+    (255, 0, 0),
+    (0, 255, 255),
+    (255, 0, 255),
+    (255, 255, 0),
+    (0, 128, 255),
+    (0, 165, 255),
+    (203, 192, 255),
+    (0, 255, 127),
+    (255, 165, 0),
+    (147, 20, 255),
+    (255, 128, 0),
+    (0, 215, 255),
+)
+
+
+def annotate_palette_rgb(index_zero_based: int) -> Tuple[int, int, int]:
+    bgr = ANNOTATE_BGR_PALETTE[index_zero_based % len(ANNOTATE_BGR_PALETTE)]
+    return (bgr[2], bgr[1], bgr[0])
+
 
 class AnnotateApiError(RuntimeError):
     """Annotate service returned an error or an unexpected payload."""

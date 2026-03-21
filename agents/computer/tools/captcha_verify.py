@@ -40,6 +40,11 @@ MOVE_INTERVAL = 0.03
 DRAG_MOVE_INTERVAL = 0.02
 # 每次移动到目标前的随机等待（秒），模拟人工节奏
 PRE_MOVE_DELAY_MIN, PRE_MOVE_DELAY_MAX = 0.5, 1.5
+# 鼠标到达起始点（拖动：手柄起点；点选：首次轨迹终点）后，在指针附近 ±N 像素内随机跳 3 次，再继续按下/点击
+PRE_REAL_MOVE_JITTER_STEPS = 3
+PRE_REAL_MOVE_JITTER_RADIUS_PX = 10
+PRE_REAL_MOVE_JITTER_SLEEP_MIN = 0.2
+PRE_REAL_MOVE_JITTER_SLEEP_MAX = 0.5
 # 单次移动总时长范围（秒）
 MOVE_TOTAL_TIME_MIN, MOVE_TOTAL_TIME_MAX = 0.3, 1
 # 滑块滑动总时长（秒）：后端常校验耗时，过短会被判异常，建议 0.35～0.8
@@ -77,6 +82,22 @@ def _apply_mouse_plan(path: List[Tuple[float, float]], intervals: List[float]) -
     for (x, y), dt in zip(path, intervals):
         pyautogui.moveTo(int(round(x)), int(round(y)))
         time.sleep(dt)
+
+
+def _mouse_jitter_near_cursor(jitter_radius_px: int = PRE_REAL_MOVE_JITTER_RADIUS_PX) -> None:
+    """在当前鼠标位置周围 ±PRE_REAL_MOVE_JITTER_RADIUS_PX 内随机取点，连续移动若干次（无缓动轨迹）。"""
+    import pyautogui
+
+    w, h = pyautogui.size()
+    ox, oy = (int(pyautogui.position()[0]), int(pyautogui.position()[1]))
+    r = jitter_radius_px
+    for _ in range(PRE_REAL_MOVE_JITTER_STEPS):
+        nx = ox + random.randint(-r, r)
+        ny = oy + random.randint(-r, r)
+        nx = max(0, min(w - 1, nx))
+        ny = max(0, min(h - 1, ny))
+        pyautogui.moveTo(nx, ny)
+        time.sleep(random.uniform(PRE_REAL_MOVE_JITTER_SLEEP_MIN, PRE_REAL_MOVE_JITTER_SLEEP_MAX))
 
 
 def _captcha_log(agent: Any, message: str) -> None:
@@ -174,22 +195,24 @@ def _upload_and_query(
     )
     if out.get("status") != 0:
         return None, Response(
-            message=out.get("msg") or "Upload failed.",
+            message=dati_client.format_dati_error(out.get("status"), out.get("msg")),
             break_loop=False,
         )
     subjectno = out.get("msg")
     if not subjectno:
         return None, Response(message="Upload returned no task id.", break_loop=False)
-    answer = dati_client.query_until_ready(
+    answer, query_err = dati_client.query_until_ready(
         str(subjectno),
         timeout_seconds=QUERY_TIMEOUT,
         api_url=api_url,
         authcode=authcode,
     )
     print(f"[dtsdk] query raw result (answer string): {answer!r}")
-    if answer is None:
+    if query_err:
+        return None, Response(message=query_err, break_loop=False)
+    if not answer:
         return None, Response(
-            message="Query timeout or failed within 60s.",
+            message="Query returned empty answer.",
             break_loop=False,
         )
     return answer, None
@@ -312,6 +335,10 @@ def _do_click(
         p, iv = _CAPTCHA_MOVE_COMPOSITE.plan(path_pts, total_time=total_time)
         _apply_mouse_plan(p, iv)
         actions._click(target)
+
+        if i < len(screen_points) - 1:
+            jitter_radius_px = int(PRE_REAL_MOVE_JITTER_RADIUS_PX / (i + 1))
+            _mouse_jitter_near_cursor(jitter_radius_px)
     _captcha_log(tool.agent, "操作结束")
     return Response(
         message=f"Goal: {goal}. Clicked {len(screen_points)} point(s). Verify on next screenshot.",
@@ -378,6 +405,7 @@ def _do_drag(
     total_time = MOVE_TOTAL_TIME_MIN + random.random() * (MOVE_TOTAL_TIME_MAX - MOVE_TOTAL_TIME_MIN)
     p0, iv0 = _CAPTCHA_MOVE_COMPOSITE.plan(to_start, total_time=total_time)
     _apply_mouse_plan(p0, iv0)
+    _mouse_jitter_near_cursor()
     pyautogui.mouseDown()
     time.sleep(0.05)
     if is_slider:

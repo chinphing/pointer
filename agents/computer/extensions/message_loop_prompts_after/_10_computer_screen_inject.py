@@ -1,6 +1,10 @@
 """
 Inject current screen images into the prompt for the computer profile.
-Image order: (1) raw screenshot, (2) annotated image with indices, (3) zoom: 300px region around mouse, 3× magnification.
+Image order: (1) raw screenshot for the model (pointer/caret + colored outlines on large bboxes, same palette/index as (2)),
+(2) annotated image with indices, (3) zoom: 300px region around mouse, 3× magnification.
+Large regions on the LLM raw frame use the same per-index BGR palette as the annotate service and cv2 FONT_HERSHEY_SIMPLEX (no external font files) for index labels at top-left.
+Frontend live preview and saved *_raw.png stay without those layout boxes/labels (only pointer/caret overlays as before).
+The same marked frame is also saved as *_raw_layouts.png next to *_raw.png (same timestamp prefix).
 Annotation: `som_util.BoxAnnotator` calls POST /api/v1/annotate/all (see COMPUTER_ANNOTATE_API_BASE); builds index_map for vision tools.
 Saves images under {workdir}/computer/snapshots/<context_id>/ (see storage_paths.py).
 Only the latest screen inject is sent to the LLM; earlier ones are replaced with a text placeholder to reduce token usage.
@@ -18,7 +22,9 @@ from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 
-from PIL import Image, ImageDraw
+import cv2
+import numpy as np
+from PIL import Image
 
 from python.helpers.extension import Extension
 from python.helpers import history, runtime
@@ -51,6 +57,87 @@ NEAREST_NEIGHBOR_COUNT = 10
 # Crop size (px) around mouse; output is this size * MOUSE_ZOOM_SCALE
 MOUSE_ZOOM_CROP_SIZE = 300
 MOUSE_ZOOM_SCALE = 3
+
+# LLM-only raw frame: outline boxes strictly larger than this area (px²) + same 1-based index/colors as annotated image
+LARGE_REGION_OUTLINE_MIN_AREA = 100 * 100
+# Match legacy cv2 annotator: FONT_HERSHEY_SIMPLEX + font_scale + rectangle thickness
+LARGE_REGION_FONT_SCALE = 0.5
+LARGE_REGION_LINE_THICKNESS = 1
+# Inset for index badge from bbox top-left (aligns with annotate `padding` default)
+LARGE_REGION_INSIDE_BOX_EDGE_PADDING = 3
+
+_PALETTE_N = len(som_util.ANNOTATE_BGR_PALETTE)
+
+
+def _draw_large_region_outlines(
+    pil_img: Image.Image,
+    boxes: List[Any],
+    min_area: int = LARGE_REGION_OUTLINE_MIN_AREA,
+    font_scale: float = LARGE_REGION_FONT_SCALE,
+    thickness: int = LARGE_REGION_LINE_THICKNESS,
+) -> Image.Image:
+    """Outline large bboxes (BGR palette); 1-based index via cv2 FONT_HERSHEY_SIMPLEX at top-left."""
+    if not boxes:
+        return pil_img
+    if pil_img.mode != "RGB":
+        pil_img = pil_img.convert("RGB")
+    img_bgr = cv2.cvtColor(np.asarray(pil_img, dtype=np.uint8), cv2.COLOR_RGB2BGR)
+    img_h, img_w = img_bgr.shape[:2]
+    line_w = max(1, int(thickness))
+    text_thick = max(1, line_w)
+    pad = max(LARGE_REGION_INSIDE_BOX_EDGE_PADDING, line_w)
+    font_face = cv2.FONT_HERSHEY_SIMPLEX
+    scale = float(font_scale)
+
+    for i, box in enumerate(boxes):
+        try:
+            x1, y1, x2, y2 = float(box[0]), float(box[1]), float(box[2]), float(box[3])
+        except (IndexError, TypeError, ValueError):
+            continue
+        bw = max(0.0, x2 - x1)
+        bh = max(0.0, y2 - y1)
+        if bw * bh <= min_area:
+            continue
+        xi1, yi1, xi2, yi2 = int(x1), int(y1), int(x2), int(y2)
+        bgr = som_util.ANNOTATE_BGR_PALETTE[i % _PALETTE_N]
+        cv2.rectangle(img_bgr, (xi1, yi1), (xi2, yi2), bgr, line_w)
+        label = str(i + 1)
+        tx = max(0, min(xi1 + pad, img_w - 1))
+        ty_top = max(0, min(yi1 + pad, img_h - 1))
+        (tw, th), bl = cv2.getTextSize(label, font_face, scale, text_thick)
+        x0 = max(0, tx - 1)
+        y0 = max(0, ty_top - 1)
+        x1b = min(img_w - 1, tx + tw + 1)
+        y1b = min(img_h - 1, ty_top + th + bl + 1)
+        cv2.rectangle(img_bgr, (x0, y0), (x1b, y1b), bgr, -1)
+        cv2.putText(
+            img_bgr,
+            label,
+            (tx, ty_top + th),
+            font_face,
+            scale,
+            (255, 255, 255),
+            text_thick,
+            cv2.LINE_AA,
+        )
+    out_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    return Image.fromarray(out_rgb)
+
+
+def _apply_focus_mouse_overlays(
+    pil_img: Image.Image,
+    w: int,
+    h: int,
+    focus_ix: Optional[int],
+    focus_iy: Optional[int],
+    mouse_ix: Optional[int],
+    mouse_iy: Optional[int],
+) -> Image.Image:
+    if focus_ix is not None and focus_iy is not None and 0 <= focus_ix < w and 0 <= focus_iy < h:
+        pil_img = _draw_focus_caret_overlay(pil_img, focus_ix, focus_iy)
+    if mouse_ix is not None and mouse_iy is not None and 0 <= mouse_ix < w and 0 <= mouse_iy < h:
+        pil_img = _draw_cursor_pointer_overlay(pil_img, mouse_ix, mouse_iy)
+    return pil_img
 
 
 def _crop_around_mouse_3x(
@@ -222,8 +309,10 @@ def _save_snapshots(
     raw_img: Image.Image,
     annotated_img: Image.Image,
     zoomed_imgs: Optional[List[Tuple[str, Image.Image]]] = None,
+    raw_layouts_img: Optional[Image.Image] = None,
 ) -> Dict[str, str]:
     """Save debug PNGs under {workdir}/computer/snapshots/<context_id>/<timestamp>_*.png.
+    Same timestamp prefix for raw, raw_layouts (LLM raw with large-region outlines), annotated, zoom_*.
     Returns absolute paths for disk use (e.g. dev log attach); RawMessage previews use filename only.
     """
     result: Dict[str, str] = {}
@@ -239,6 +328,10 @@ def _save_snapshots(
         annotated_img.save(annotated_path)
         result["raw"] = raw_path
         result["annotated"] = annotated_path
+        if raw_layouts_img is not None:
+            raw_layouts_path = f"{prefix}_raw_layouts.png"
+            raw_layouts_img.save(raw_layouts_path)
+            result["raw_layouts"] = raw_layouts_path
         if zoomed_imgs:
             for key, img in zoomed_imgs:
                 safe_key = key.replace("/", "_").replace("\\", "_")
@@ -288,12 +381,10 @@ class ComputerScreenInject(Extension):
         except Exception:
             pass
 
-        # Raw image for LLM and frontend: draw focus and mouse once on a copy (keep img clean for annotation)
-        img_with_overlays = img.copy()
-        if focus_ix is not None and focus_iy is not None and 0 <= focus_ix < w and 0 <= focus_iy < h:
-            img_with_overlays = _draw_focus_caret_overlay(img_with_overlays, focus_ix, focus_iy)
-        if mouse_ix_raw is not None and mouse_iy_raw is not None and 0 <= mouse_ix_raw < w and 0 <= mouse_iy_raw < h:
-            img_with_overlays = _draw_cursor_pointer_overlay(img_with_overlays, mouse_ix_raw, mouse_iy_raw)
+        # Raw for frontend / disk: pointer + caret only (no large-region outlines)
+        img_with_overlays = _apply_focus_mouse_overlays(
+            img.copy(), w, h, focus_ix, focus_iy, mouse_ix_raw, mouse_iy_raw
+        )
 
         # Store raw screenshot as base64 for frontend live preview (snapshot.computer_screen_raw)
         buf = BytesIO()
@@ -326,6 +417,17 @@ class ComputerScreenInject(Extension):
             annotated_img = img.copy()
             boxes_sorted = []
             err_preview = f"Detection failed: {e}; no indices available."
+
+        # LLM raw frame only: large bbox outlines + same pointer/caret as frontend raw (not sent to UI / disk raw save)
+        img_llm_raw = _apply_focus_mouse_overlays(
+            _draw_large_region_outlines(img.copy(), boxes_sorted),
+            w,
+            h,
+            focus_ix,
+            focus_iy,
+            mouse_ix_raw,
+            mouse_iy_raw,
+        )
 
         index_map: Dict[int, Dict[str, float]] = {}
         if boxes_sorted:
@@ -482,12 +584,12 @@ class ComputerScreenInject(Extension):
             "type": "text",
             "text": (
                 "Input types for this turn: "
-                "(1) raw screenshot; "
+                f"(1) raw screenshot for you: same underlying capture as the user's live preview, with **colored rectangular outlines** on **large** regions only (bbox area > {LARGE_REGION_OUTLINE_MIN_AREA} px², same **per-index palette** as image (2)) and the **same 1-based index** in a small same-color badge at the **top-left** of each such region. Use this to align large parents with small inner targets. **The user's live UI preview does not include these layout boxes or index badges** (only pointer/focus caret). On disk, the plain capture is saved as *_raw.png; the same marked frame as (1) is saved as *_raw_layouts.png (same folder and timestamp prefix). "
                 "(2) annotated screenshot with indices; "
                 "(3) zoom: 300px region around current mouse position, 3× magnification. "
                 + annotation_help
                 + f" Image size: {w}×{h} pixels. Origin: top-left (0,0). "
-                + "Pay attention to two overlays on the images: (1) **Mouse cursor** — the arrow shows where the pointer is; use it to verify that the previous click landed at the intended position. (2) **Focus caret** — the I-beam or blinking caret shows which input has focus; use it to verify focus and that the previous type/focus action targeted the right field. Both raw and annotated images include these overlays. "
+                + "Pay attention to two overlays on the images: **Mouse cursor** — the arrow shows where the pointer is; use it to verify that the previous click landed at the intended position. **Focus caret** — the I-beam or blinking caret shows which input has focus. Images (1) and (2) include pointer and caret where in-bounds; only (1) adds the large-region colored layout outlines described above. "
                 + mouse_coords_str
                 + "\n"
                 + reference_bbox_text
@@ -522,8 +624,8 @@ class ComputerScreenInject(Extension):
                 },
             )
 
-        # 2. Raw screenshot - kept in history for comparison (with mouse and focus overlays)
-        b64_raw = _pil_to_base64_jpeg(img_with_overlays)
+        # 2. Raw for model: large-region outlines + mouse/focus (frontend/disk raw stays without layout boxes)
+        b64_raw = _pil_to_base64_jpeg(img_llm_raw)
         raw_img_content: List[Dict[str, Any]] = [
             {"type": "text", "text": "[Screen raw]"},
             {
@@ -556,7 +658,13 @@ class ComputerScreenInject(Extension):
                 zoomed_imgs_to_save.append(("mouse", mouse_zoomed))
 
         context_id = getattr(self.agent.context, "id", None) or "default"
-        saved_paths = _save_snapshots(context_id, img_with_overlays, annotated_img, zoomed_imgs_to_save)
+        saved_paths = _save_snapshots(
+            context_id,
+            img_with_overlays,
+            annotated_img,
+            zoomed_imgs_to_save,
+            raw_layouts_img=img_llm_raw,
+        )
 
         # Pass snapshot path to before_main_llm_call so it can attach to this turn's agent log (not the previous one)
         if runtime.is_development() and saved_paths.get("annotated"):

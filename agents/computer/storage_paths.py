@@ -2,7 +2,7 @@
 Computer Agent file storage under the user workdir (Settings → workdir_path, default usr/workdir).
 
 Layout:
-  {workdir}/computer/snapshots/<context_id>/   — screen inject debug PNGs
+  {workdir}/computer/snapshots/<context_id>/   — screen inject debug PNGs (*_raw.png, *_raw_layouts.png, *_annotated.png, …)
   {workdir}/computer/extract_data/<context_id>/ — extract_data fragments
   {workdir}/computer/task_done/<context_id>/   — merged task outputs
 

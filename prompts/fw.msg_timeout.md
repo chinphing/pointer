@@ -1,15 +1,15 @@
 # User is not responding to your message.
 If you have a task in progress, continue on your own.
-I you don't have a task, use the **task_done** tool with **text** argument.
+If you have no task, use the **`response`** tool to say you are waiting for the user (do not invent unsupported tool args).
 
 # Example
 ```xml
 <response>
-  <thoughts>There's no more work for me, I will ask for another task.</thoughts>
-  <headline>Completing task and requesting next assignment</headline>
-  <tool_name>task_done</tool_name>
+  <thoughts>No further work until the user replies.</thoughts>
+  <headline>Waiting for user</headline>
+  <tool_name>response</tool_name>
   <tool_args>
-    <text>I have no more work, please tell me if you need anything.</text>
+    <text>I have no more work for now; reply when you need anything.</text>
   </tool_args>
 </response>
 ```

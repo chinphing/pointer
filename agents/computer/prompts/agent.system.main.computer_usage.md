@@ -20,11 +20,11 @@ Use these rules for reliable, low-cost operation.
 ### 2) Planning
 
 - For multi-step tasks, produce a short numbered plan of **1–10 steps**. Each step is a **task** (e.g. one list item, one page, one screen), not a single tool call.
-- **Plan step = task_index**: Align plan step number with `task_index`: step 1 → task_index 1, step 2 → task_index 2, etc. Use the same index in `extract_data`, `task_done`, and `extract_data:load` for that step.
+- **Plan step = task_index**: Align plan step number with `task_index`: step 1 → task_index 1, step 2 → task_index 2, etc. Use the same index in `extract_data`, **`task_done:checkpoint`**, and `extract_data:load` for that step.
 - **Granularity**: Prefer coarse steps. If the page/site shows clear step indicators, use those as plan items. If not: one list item = one task, or one website page / one app screen = one task. Do not use one tool call as one plan step.
-- When a task has no extract data (task_done will tell you when there was nothing to merge), note it in plans and continue; **Skipped** means the plan changed and this task was intentionally omitted.
+- When a task has no extract data (**task_done:checkpoint** will tell you when there was nothing to merge), note it in plans and continue; **Skipped** means the plan changed and this task was intentionally omitted.
 - **Pagination**: When all tasks on one page are done, compress that into one line (e.g. "Complete first page … tasks. Done") and continue task IDs from the first page base for the next page.
-- **When to output plans**: (1) When the prompt says "This is the first step", **always** include `plans`. (2) When this is your **first reply** and the task is clearly **multi-step** (e.g. upload multiple files, process a list, multi-page flow), **proactively** include `plans` — do not wait for the literal phrase; judge from the task. Later, update `plans` only when changed; state progress per task: Done, Processing, Pending, Skipped (Skipped = plan changed / task omitted).
+- **When to output plans**: **Always** on the **first assistant reply** for a new user task (every task start), including **single-step** jobs (use a one-line plan). **Always** again on any reply where **progress or the plan changes** (step Done/Processing/Pending, active subtask switch, scope change, Skipped). If neither the plan nor per-step status changed since your last `plans`, you may omit `<plans>` that turn. State progress per task: Done, Processing, Pending, Skipped (Skipped = plan changed / task omitted).
 - Don't drop or update tasks already done. Track remaining count for N-item tasks (`remaining = total - completed`).
 
 ### 3) Reading and extraction workflow
@@ -41,7 +41,7 @@ Use these rules for reliable, low-cost operation.
 2. **First scroll**: If the mouse is already inside the scrollable area, use **mouse:scroll_at_current** directly. Otherwise use **composite_action:scroll_at_index** (target the scrollable area) to position and scroll. **Scroll amount**: 1–10 (up) or -10–-1 (down). **Generally use 10** (or -10). Use **5 or -5** when you want to keep the previously edited content in view and scroll to find the Save button.
 3. **Next scrolls**: use **mouse:scroll_at_current** (no re-targeting).
 4. **Repeat** extract → scroll → extract → scroll until reading is complete (see "When to end scrolling" below).
-5. **When one task (subtask) is complete**: call `task_done` with that `task_index` once. The tool auto-merges extract fragments (if any), stashes data, summarizes experience and progress, and clears prior history for the next task.
+5. **Checkpoint rule (only one):** Call **`task_done:checkpoint`** **only** when the inject shows **Mandatory (task_done reminder)** (every **N** assistant turns since last checkpoint/read; **N** is in Settings, default 20). Use `task_index`, **`plans`** (required), and optional `progress` / `learnings`. **Prefer** to reach a **subtask boundary** first (e.g. right after you finish that subtask’s read/extract for the cycle); if the reminder appears mid-subtask, checkpoint **now** with the active `task_index` and current `plans`/`progress`. Finishing a subtask **does not** require an immediate checkpoint otherwise.
 6. When a **later** task needs another task’s full content: call `extract_data:load` with that task_index (load may be used in the middle). **Only at the end**, when you need **all** saved data for the final response: call `task_done:read` once, then use the result and call `response`.
 
 ### 4) When to end scrolling
@@ -52,7 +52,7 @@ Use these rules for reliable, low-cost operation.
 - The **user target** (e.g. a specific item or paragraph) has been found.
 - Scrolling further produces **no new main content** (only repeated headers/footers or ads).
 
-**Stop as soon as you judge complete.** Do not keep scrolling up and down. Avoid **bouncing**: do not scroll down, then back up, then down again “to be sure”. Once any condition above is met, call `task_done` with that task’s `task_index` and move on.
+**Stop as soon as you judge complete.** Do not keep scrolling up and down. Avoid **bouncing**: do not scroll down, then back up, then down again “to be sure”. Once any condition above is met, **stop scrolling for that read pass** and continue the workflow (next actions or next subtask); call **`task_done:checkpoint`** **only** when **Mandatory (task_done reminder)** is shown, not immediately here.
 - Ignore floating/interactive overlays (chat widgets, feedback buttons, cookie bars, popups, floating filters) when deciding end of content. Judge completion from main content only.
 
 ### 5) Scroll anchor and validation

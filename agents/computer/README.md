@@ -24,7 +24,7 @@
 2. **截图**：使用本目录下 `screen.py` 的 `screenshot_current_monitor()` 获取当前光标所在显示器的截图及 bbox。
 3. **标注与序号**：`som_util.py` 的 `BoxAnnotator` 通过 **HTTP** 调用 `POST /api/v1/annotate/all`（RF-DETR + 可选 OCR、去重与排序由服务端完成），返回带序号的标注图与 `boxes`；本仓库不再加载本地检测模型。基址由环境变量 `COMPUTER_ANNOTATE_API_BASE` 配置（默认 `http://127.0.0.1:8000`）。
 4. **可选象限放大**：将标注图按 2×2 分为左上、右上、右下、左下四块；若用户或上一轮回复中出现方位词（如「左上」「top_left」等），则把对应象限裁剪并 2 倍放大后一并作为输入。
-5. **工具**：拆分为 **mouse**（click_index、double_click_index、click_at、scroll_at_current 等）、**hotkey**（press_keys）、**modified_click**（modified_click_index、modified_click_at）、**composite_action**（type_text_at_index、type_text_at、scroll_at_index）、**wait**。优先用序号；若目标元素无序号，则用坐标（模型输出归一化坐标，由 `coord_convert.py` 按配置的坐标系还原为屏幕像素）。**调用优先级**：尽量少调用 → 优先 composite_action，其次 hotkey/modified_click，再次 mouse；需要延迟时用 wait。**阅读与数据**：在每次滚动前用 **extract_data:extract**（instruction + task_index）将当前可见内容追加到任务临时文件；当某子任务的全部片段提取完毕，调用 **task_done**（task_index）；有碎片时会自动合并并保存为正式文件。
+5. **工具**：拆分为 **mouse**（click_index、double_click_index、click_at、scroll_at_current 等）、**hotkey**（press_keys）、**modified_click**（modified_click_index、modified_click_at）、**composite_action**（type_text_at_index、type_text_at、scroll_at_index）、**wait**。优先用序号；若目标元素无序号，则用坐标（模型输出归一化坐标，由 `coord_convert.py` 按配置的坐标系还原为屏幕像素）。**调用优先级**：尽量少调用 → 优先 composite_action，其次 hotkey/modified_click，再次 mouse；需要延迟时用 wait。**阅读与数据**：**extract_data:extract** 只追加碎片；**`task_done:checkpoint`** 仅在屏幕注入 **Mandatory (task_done reminder)** 时调用（距上次 checkpoint/read 满 **N** 轮助手轮次，**N** 可在设置里改，默认 20）；合并 + 截断历史；**较优做法**是在接近 N 轮且**当前子任务的阅读/抽取刚结束**时再 checkpoint。其余时候可用 **extract_data:load** / **`task_done:read`** 按需合并碎片。**execution_checkpoint** 持久化计划/进度/经验，截断后由屏幕注入回显。
 
 ## 架构与数据流
 
@@ -60,9 +60,9 @@
 | `tools/vision_common.py` | 共享逻辑：index_map/screen_info、resolve_index、get_coord_pos、scroll  clamping、LAST_VISION_ACTION_KEY、after_execution 钩子。 |
 | `tools/mouse.py`、`hotkey.py`、`modified_click.py`、`composite_action.py`、`wait.py`、`account_login.py` | vision 工具与 **account_login**（凭据填充）：从 vision_common 与 actions 执行点击、快捷键、修饰键+点击、组合操作、等待及登录字段粘贴。 |
 | `coord_convert.py` | 可扩展的坐标还原：将模型输出的归一化坐标转为屏幕像素。内置 `qwen`（1000×1000）、`kimi`（1×1）、`pixel`；通过 `vision_coordinate_system` 配置项选择。 |
-| `storage_paths.py` | 统一解析 **工作目录**（Settings 中的 `workdir_path`，默认 `usr/workdir`）下的 `computer/snapshots`、`computer/extract_data`、`computer/task_done`。**不再**写入仓库内 `agents/computer/` 下同名目录。 |
+| `storage_paths.py` | 统一解析 **工作目录**下的 `computer/snapshots`、`computer/extract_data`、`computer/task_done`、`computer/execution_checkpoint`。**不再**写入仓库内 `agents/computer/` 下同名目录。 |
 | `snapshots/`（数据目录） | 实际路径：`{workdir}/computer/snapshots/<context_id>/`。每轮注入保存 raw / annotated / zoom 的 PNG。History 里图片消息的 `preview` 仅含 **`文件名`**（省 token；磁盘上仍按 context 分目录）。旧数据若在 `agents/computer/snapshots/` 可手动迁入对应 `workdir` 路径。 |
-| `extract_data/`、`task_done/`（数据目录） | 实际路径：`{workdir}/computer/extract_data/<context_id>/` 与 `{workdir}/computer/task_done/<context_id>/`，由 `task_data_memory.py` 使用。 |
+| `extract_data/`、`task_done/`、`execution_checkpoint/`（数据目录） | 碎片、合并结果、持久化计划与经验：`{workdir}/computer/.../<context_id>/`，由 `task_data_memory.py` 使用。 |
 
 ## 依赖
 

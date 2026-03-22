@@ -683,6 +683,10 @@ class Agent:
     def hist_add_user_message(self, message: UserMessage, intervention: bool = False):
         self.history.new_topic()  # user message starts a new topic in history
 
+        # Computer profile: reset task_done N-turn reminder counter (see agents/computer/task_data_memory.py).
+        if getattr(self.config, "profile", "") == "computer":
+            self.data["computer_turns_since_task_done"] = 0
+
         # load message template based on intervention
         if intervention:
             content = self.parse_prompt(
@@ -725,6 +729,10 @@ class Agent:
         }
         asyncio.run(self.call_extensions("hist_add_tool_result", data=data))
         return self.hist_add_message(False, content=data)
+
+    def truncate_current_topic_messages(self) -> None:
+        """Clear the current topic's messages (e.g. Computer agent after task_done:checkpoint)."""
+        self.history.current.messages.clear()
 
     def concat_messages(
         self, messages

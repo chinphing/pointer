@@ -170,6 +170,8 @@ class Settings(TypedDict):
     # Computer agent: right-panel screenshot refresh
     computer_screen_preview_auto_refresh: bool
     computer_screen_preview_interval_sec: int
+    # Computer agent: inject mandatory checkpoint reminder after this many assistant turns since last checkpoint/read (0 = off; default 20)
+    computer_task_done_reminder_after_turns: int
     # Computer agent: account_login tool — JSON path for profiles (empty = usr/computer_credentials.json)
     computer_credentials_path: str
 
@@ -623,6 +625,9 @@ def get_default_settings() -> Settings:
         captcha_slider_offset_px=get_default_value("captcha_slider_offset_px", 0),
         computer_screen_preview_auto_refresh=get_default_value("computer_screen_preview_auto_refresh", True),
         computer_screen_preview_interval_sec=get_default_value("computer_screen_preview_interval_sec", 5),
+        computer_task_done_reminder_after_turns=get_default_value(
+            "computer_task_done_reminder_after_turns", 20
+        ),
         computer_credentials_path=get_default_value("computer_credentials_path", ""),
     )
 

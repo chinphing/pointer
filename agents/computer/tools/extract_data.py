@@ -1,7 +1,7 @@
 """
 Extract data from the current screen for the Computer Agent.
 - extract: capture visible content, append to task temp file, return a short summary in the response.
-- load: load previously saved task data (after task_done) for use in later tasks; no re-extraction.
+- load: load previously saved task data (after task_done:checkpoint) for use in later tasks; no re-extraction.
 """
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ class ExtractDataTool(Tool):
         content, missing = await memory.load_tasks(indices)
         if missing:
             return Response(
-                message=f"Task(s) {missing} not found. Complete those with task_done first. Loaded: {[i for i in indices if i not in missing]}.",
+                message=f"Task(s) {missing} not found. Checkpoint those with task_done:checkpoint first. Loaded: {[i for i in indices if i not in missing]}.",
                 break_loop=False,
             )
         saved_list = self.agent.get_data("computer_saved_task_indices") or []
@@ -196,8 +196,8 @@ class ExtractDataTool(Tool):
             message=(
                 f"Task {task_index} extract saved.\n\n"
                 f"**Saved data summary:**\n{summary}\n\n"
-                "Next: scroll if needed and extract again, or call task_done with this task_index when the task is complete. "
-                "To use this data in a later task, call extract_data:load with that task_index after it has been saved by task_done."
+                "Next: scroll if needed and extract again. Call task_done:checkpoint only when Mandatory (task_done reminder) appears (N assistant turns; Settings), not immediately when this subtask’s reading ends. "
+                "To use this data in a later task, call extract_data:load (merges fragments on demand if needed) or after a checkpoint/read produced merged files."
             ),
             break_loop=False,
         )

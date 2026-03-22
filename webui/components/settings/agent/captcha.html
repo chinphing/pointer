@@ -82,6 +82,16 @@
             </div>
           </div>
 
+          <div class="field">
+            <div class="field-label">
+              <div class="field-title">task_done reminder (assistant turns)</div>
+              <div class="field-description">After this many assistant (vision) turns without task_done:checkpoint or task_done:read, inject the mandatory checkpoint reminder — the only required time to checkpoint (default 20). Set 0 to disable.</div>
+            </div>
+            <div class="field-control">
+              <input type="number" min="0" max="200" step="1" x-model.number="$store.settings.settings.computer_task_done_reminder_after_turns" />
+            </div>
+          </div>
+
         </div>
       </template>
     </div>

@@ -1,12 +1,16 @@
 """
 Task data memory system for Computer Agent.
-Unified handling of: fragment save, fragment merge per task, load by task IDs, load all and cleanup.
+Unified handling of: fragment save, fragment merge per task, load by task IDs, load all and cleanup,
+execution checkpoint (plans / progress / session learnings).
 Used by extract_data (memory) tool and task_done tool.
 """
 from __future__ import annotations
 
 import glob
 import os
+import re
+import shutil
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -16,6 +20,13 @@ import storage_paths
 
 # Agent data key: set to False to skip cleanup when load_all_tasks runs (default True).
 LOAD_ALL_CLEANUP_KEY = "computer_load_all_cleanup"
+
+EXECUTION_STATE_FILENAME = "execution_state.md"
+LEARNINGS_MAX_CHARS = 8000
+READ_SUMMARY_LEARNINGS_MAX = 4000
+
+# Turns since any task_done-family tool succeeded; incremented each computer screen inject (see extension).
+COMPUTER_TURNS_SINCE_TASK_DONE_KEY = "computer_turns_since_task_done"
 
 
 def _extract_dir(agent: "Agent") -> str:
@@ -30,6 +41,67 @@ def _task_done_dir(agent: "Agent") -> str:
     return os.path.join(base, context_id)
 
 
+def _execution_checkpoint_dir(agent: "Agent") -> str:
+    base = storage_paths.computer_execution_checkpoint_dir()
+    context_id = getattr(agent.context, "id", None) or "default"
+    return os.path.join(base, context_id)
+
+
+def _execution_state_path(agent: "Agent") -> str:
+    return os.path.join(_execution_checkpoint_dir(agent), EXECUTION_STATE_FILENAME)
+
+
+def _parse_execution_state_sections(raw: str) -> dict[str, str]:
+    """Split execution_state.md into Plans / Progress / Experience and fixes."""
+    sections: dict[str, str] = {"Plans": "", "Progress": "", "Experience and fixes": ""}
+    current: str | None = None
+    buf: list[str] = []
+    for line in raw.splitlines():
+        if line.strip() == "## Plans":
+            if current:
+                sections[current] = "\n".join(buf).strip()
+            current = "Plans"
+            buf = []
+            continue
+        if line.strip() == "## Progress":
+            if current:
+                sections[current] = "\n".join(buf).strip()
+            current = "Progress"
+            buf = []
+            continue
+        if line.strip() == "## Experience and fixes":
+            if current:
+                sections[current] = "\n".join(buf).strip()
+            current = "Experience and fixes"
+            buf = []
+            continue
+        buf.append(line)
+    if current:
+        sections[current] = "\n".join(buf).strip()
+    return sections
+
+
+def _format_execution_state(sections: dict[str, str]) -> str:
+    p = sections.get("Plans", "").strip()
+    g = sections.get("Progress", "").strip()
+    e = sections.get("Experience and fixes", "").strip()
+    return (
+        "## Plans\n\n"
+        f"{p}\n\n"
+        "## Progress\n\n"
+        f"{g}\n\n"
+        "## Experience and fixes\n\n"
+        f"{e}\n"
+    )
+
+
+def _trim_learnings(text: str, max_chars: int = LEARNINGS_MAX_CHARS) -> str:
+    t = (text or "").strip()
+    if len(t) <= max_chars:
+        return t
+    return "…(truncated)\n" + t[-max_chars:]
+
+
 class TaskDataMemory:
     """
     Memory system for task-related extracted data.
@@ -37,10 +109,85 @@ class TaskDataMemory:
     - merge_task: merge all fragments for one task via LLM and save to task_done.
     - load_tasks: load saved content for given task IDs (for use in the middle of the flow).
     - load_all_tasks: load all saved tasks and cleanup; use once at the end before response.
+    - write_execution_state / read_execution_state: persisted plans, progress, session learnings.
     """
 
     def __init__(self, agent: "Agent"):
         self.agent = agent
+
+    def read_execution_state(self) -> str | None:
+        """Full markdown for prompt inject; None if missing."""
+        path = _execution_state_path(self.agent)
+        if not os.path.isfile(path):
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                s = f.read().strip()
+            return s if s else None
+        except OSError:
+            return None
+
+    def read_learnings_for_summary(self, max_chars: int = READ_SUMMARY_LEARNINGS_MAX) -> str | None:
+        """Experience section only, for task_done:read tail."""
+        raw = self.read_execution_state()
+        if not raw:
+            return None
+        sec = _parse_execution_state_sections(raw).get("Experience and fixes", "").strip()
+        if not sec:
+            return None
+        if len(sec) > max_chars:
+            return sec[-max_chars:]
+        return sec
+
+    def write_execution_state(
+        self,
+        *,
+        plans_markdown: str | None = None,
+        progress_note: str | None = None,
+        current_task_index: int | None = None,
+        learnings_delta: str | None = None,
+        learnings_task_index: int | None = None,
+    ) -> None:
+        """
+        Read-modify-write execution_state.md. None means leave section unchanged (except learnings append).
+        Appends to Experience and fixes when learnings_delta is non-empty.
+        """
+        path = _execution_state_path(self.agent)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        if os.path.isfile(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    sections = _parse_execution_state_sections(f.read())
+            except OSError:
+                sections = {"Plans": "", "Progress": "", "Experience and fixes": ""}
+        else:
+            sections = {"Plans": "", "Progress": "", "Experience and fixes": ""}
+
+        if plans_markdown is not None:
+            sections["Plans"] = str(plans_markdown).strip()
+        if progress_note is not None:
+            extra = ""
+            if current_task_index is not None:
+                extra = f"(current task_index: {current_task_index})\n\n"
+            sections["Progress"] = (extra + str(progress_note)).strip()
+        elif current_task_index is not None and not (sections.get("Progress") or "").strip():
+            sections["Progress"] = f"(current task_index: {current_task_index})"
+
+        delta = (learnings_delta or "").strip()
+        if delta:
+            ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
+            prefix = f"[task {learnings_task_index}] " if learnings_task_index is not None else ""
+            block = f"- {prefix}{ts} — {delta}\n"
+            exp = (sections.get("Experience and fixes") or "").strip()
+            if exp:
+                exp = exp + "\n" + block
+            else:
+                exp = block.strip()
+            sections["Experience and fixes"] = _trim_learnings(exp)
+
+        out = _format_execution_state(sections)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(out)
 
     def save_fragment(self, task_index: int, instruction: str, content: str) -> None:
         """Append one fragment (one screenshot extraction) to the task's temp file."""
@@ -72,12 +219,10 @@ class TaskDataMemory:
         )
         user_content = f"Merge these extraction segments into one coherent markdown document:\n\n{raw_content}"
         try:
-            response, _ = await self.agent.call_chat_model(
-                messages=[
-                    SystemMessage(content=system),
-                    HumanMessage(content=user_content),
-                ],
-                explicit_caching=False,
+            response, _ = await self.agent.call_utility_model(
+                system=system,
+                message=user_content,
+                background=True,
             )
         except Exception:
             return None, None
@@ -98,6 +243,10 @@ class TaskDataMemory:
         out_path = os.path.join(out_dir, f"task_{task_index}.md")
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(merged)
+        try:
+            os.remove(extracts_path)
+        except OSError:
+            pass
         return out_path, merged
 
     async def load_tasks(self, task_indices: list[int]) -> tuple[str, list[int]]:
@@ -132,7 +281,6 @@ class TaskDataMemory:
         cleanup: if None, use agent data key LOAD_ALL_CLEANUP_KEY (default True).
         Returns (aggregated_content, success). success=False if no task data found.
         """
-        import re
         if cleanup is None:
             v = self.agent.get_data(LOAD_ALL_CLEANUP_KEY)
             cleanup = bool(v) if v is not None else True
@@ -170,6 +318,12 @@ class TaskDataMemory:
                     os.rmdir(out_dir)
                 except Exception:
                     pass
+                ec_dir = _execution_checkpoint_dir(self.agent)
+                if os.path.isdir(ec_dir):
+                    try:
+                        shutil.rmtree(ec_dir)
+                    except OSError:
+                        pass
             except Exception:
                 pass
         return aggregated, True

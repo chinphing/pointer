@@ -1,28 +1,40 @@
 ### task_done
 
-When a **subtask is complete**, call `task_done` with `task_index`. The tool will **automatically** merge any extract fragments for that task (if present) and save the result; you do not call merge separately.
+Two methods only: **`task_done:checkpoint`** (merge + persist state + truncate history) and **`task_done:read`** (load all saved task data for the final answer). Do **not** call plain `task_done` without a method.
 
-The response includes a **saved data summary** in the form: “Task N: saved … data. To use it, call extract_data:load with task_index=N.” When a later task needs that data, use `extract_data:load` with that `task_index` instead of re-extracting.
+**Merges:** `extract_data:extract` only **appends** fragments. Merging runs on **`task_done:checkpoint`**, or when **`extract_data:load`** / **`task_done:read`** needs merged text (see extract_data tool). You **do not** need to checkpoint as soon as a subtask ends — fragments can sit on disk until the next checkpoint or until load/read.
 
-**Call timing:** Call **once per completed task** (with that task’s `task_index`). After each call, the tool stashes data, summarizes experience and progress, and clears prior history for the next task.
+**History:** After a successful **`task_done:checkpoint`**, the runtime **truncates the current topic’s message list** (tool/vision noise removed). **Plans, progress, and session experience** are persisted to disk and re-injected each vision turn as **Persisted execution state** — do not assume old tool transcripts are still in context.
+
+**When to checkpoint (single rule):** Call **`task_done:checkpoint`** **only** when the screen inject shows **Mandatory (task_done reminder)** — i.e. after **N** assistant turns since the last checkpoint or read (N is **configurable in Settings**, default 20). **Ideal timing:** right **after** you finish the current subtask’s extraction/read work when you are at that threshold (same turn or one quick wrap-up turn first). If the reminder appears **mid-subtask**, checkpoint **now** with the active `task_index` and honest `plans` / `progress`.
 
 ---
 
-#### task_done (complete a task)
+#### task_done:checkpoint
+
+**When:** **Only** when **Mandatory (task_done reminder)** is present (N assistant turns; Settings). Not after every subtask by default.
 
 **tool_args:**
-- `task_index` (required) — The subtask index you just finished.
+- `task_index` (required) — fragments for this task are merged (if any); merged file is saved for `extract_data:load` / `task_done:read`
+- `plans` (required) — full current `<plans>` markdown (same content as in your reply when you update the plan)
+- `progress` (optional) — short progress note
+- `learnings` or `experience_delta` (optional) — short reusable tips / problem→fix (no secrets); appended to **Experience and fixes**
 
-If there are extract fragments for this task (from `extract_data:extract`), they are merged automatically and saved. If the tool reports no fragments (nothing to merge), note in plans that this task had no data and continue to the next subtask or call `task_done:read` when all tasks are done.
-
-Example:
+If there are no extract fragments, merge is skipped; still persist `plans` / optional fields and truncate.
 
 ```xml
 <response>
-  <thoughts>Subtask 2 extraction complete, marking done</thoughts>
-  <tool_name>task_done</tool_name>
+  <thoughts>N-turn reminder fired; subtask 2 reading done — checkpoint merge and state</thoughts>
+  <headline>Checkpoint task 2</headline>
+  <tool_name>task_done:checkpoint</tool_name>
   <tool_args>
     <task_index>2</task_index>
+    <plans>
+- 1. Foo — Done
+- 2. Bar — Done
+- 3. Baz — Pending
+    </plans>
+    <learnings>Site X: close cookie banner before clicking login.</learnings>
   </tool_args>
 </response>
 ```
@@ -31,25 +43,24 @@ Example:
 
 #### task_done:read
 
-Use **only when you finally need the full content** of all saved tasks—e.g. to produce the user-facing response, do synthesis, comparison, or analysis. Until then, rely on the **summaries** already in each `task_done` response (e.g. “Task N: saved … data”); do not call read just to “have” the data.
-
-Loads all saved task outputs and cleans task storage.
+Use **only** when you need **all** saved task bodies for the final user answer. Unmerged fragments are merged when needed during read/load.
 
 **tool_args:** none
 
-**IMPORTANT:** Call `task_done:read` only (1) after every subtask has been marked complete with `task_done` (task_index), and (2) when you actually need the full text (e.g. right before calling `response` or doing final processing). Do not read all data in the middle of the workflow; summaries are enough for planning and progress.
+The response includes aggregated task content and a **Session experience summary** (from persisted learnings). Use that to **briefly** give the user reusable tips and fixes in your final **`response`** (no secrets).
 
-Example:
+**IMPORTANT:** Do not call `read` in the middle of the workflow just to “have” the data; use per-task summaries and `extract_data:load` when one earlier task is needed mid-flow.
 
 ```xml
 <response>
-  <thoughts>All subtasks complete, loading saved results for final response</thoughts>
+  <thoughts>All subtasks done; loading everything for final answer</thoughts>
   <tool_name>task_done:read</tool_name>
-  <tool_args>
-  </tool_args>
+  <tool_args></tool_args>
 </response>
 ```
 
 **Workflow summary:**
-1. For each subtask: `extract_data:extract` → when done → **task_done** with that **task_index** (response gives a saved-data summary). For a later step that needs one task’s full content, use **extract_data:load** (you may call load in the middle).
-2. **Only at the end**, when you need **all** saved data for the final answer: call **task_done:read** once, then use the loaded content and call `response`.
+1. During work: `extract_data:extract` / UI tools as needed — **no** checkpoint when a subtask ends unless the **Mandatory (task_done reminder)** is already showing.
+2. When **Mandatory (task_done reminder)** appears: **`task_done:checkpoint`** with `task_index` + **`plans`** (+ optional `progress` / `learnings`); **prefer** doing it right after finishing that subtask’s read/extract when possible.
+3. Mid-flow, one task’s saved text: **`extract_data:load`** (merges fragments on demand if needed).
+4. End: **`task_done:read`** once, then **`response`**.

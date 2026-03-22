@@ -14,25 +14,25 @@ Extract current visible content as markdown and append to the task’s temp stor
 - `instruction` (required) — What to extract from the screen.
 - `task_index` (required) — Which task this extract belongs to.
 
-After extract, scroll if needed and extract again, or call `task_done` with this `task_index` when the task is complete. To use this data in a **later** task, call `extract_data:load` with that task’s `task_index` after it has been saved by `task_done`.
+After extract, scroll if needed and extract again. **Do not** call **`task_done:checkpoint`** just because this subtask’s reading is done — checkpoint **only** when **Mandatory (task_done reminder)** appears (N assistant turns; Settings). To use this data in a **later** task, call `extract_data:load` (merges fragments on demand if not yet checkpointed) or wait until a checkpoint/read has produced a merged file.
 
 ---
 
 #### extract_data:load
 
-When a **later** task needs the full content of one or more previously saved tasks (via `task_done`), call `extract_data:load` with that task_index (or list). You **may** call load in the middle of the workflow whenever a step actually needs another task’s data (e.g. task 3 needs task 1’s content → load task 1). Do not re-extract; load directly.
+When a **later** task needs the full content of one or more previously saved tasks (merged files and/or fragment files from **`extract_data:extract`**), call `extract_data:load` with that task_index (or list). You **may** call load in the middle of the workflow whenever a step actually needs another task’s data (e.g. task 3 needs task 1’s content → load task 1). Do not re-extract; load directly.
 
 **tool_args:**
 - `task_index` (required) — One task index, or multiple: pass a list `[1, 2, 3]` or comma-separated `"1,2,3"` to load several tasks at once. The response will include sections `=== Task N ===` for each.
 
-Prefer tasks already completed with `task_done` (merged). **Fallback:** if a task has not been merged yet, load will merge its fragments first and then return the merged content (same as task_done merge).
+Prefer tasks already checkpointed with **`task_done:checkpoint`** (merged). **Fallback:** if a task has not been merged yet, load will merge its fragments first and then return the merged content (same merge as checkpoint).
 
 ---
 
 **Workflow:**
 1. Extract current view → `extract_data:extract` (response shows saved summary).
-2. Scroll → extract again as needed until the task is done.
-3. When the task is done → `task_done` with that `task_index` (response shows saved-data summary).
+2. Scroll → extract again as needed until the read pass for that subtask is done.
+3. When **Mandatory (task_done reminder)** appears (~N assistant turns) → **`task_done:checkpoint`** with the appropriate `task_index` + **`plans`** (merge + truncate). **Ideal:** you **just finished** that subtask’s extract/read cycle; if not, checkpoint with current `plans`/`progress` anyway.
 4. When a **later** task needs another task’s full content → `extract_data:load` with that task_index (you may call load in the middle whenever a step needs it).
 5. **Only at the end**, when you need **all** saved data for the final response → `task_done:read` (then use the result and call `response`).
 

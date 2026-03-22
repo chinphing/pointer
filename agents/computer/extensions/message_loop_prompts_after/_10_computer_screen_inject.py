@@ -45,7 +45,10 @@ import credential_store  # noqa: E402
 
 import focus_position  # noqa: E402
 import storage_paths  # noqa: E402
+import task_data_memory  # noqa: E402
 from screen_overlay import draw_cursor_pointer_overlay, draw_focus_caret_overlay  # noqa: E402
+
+from python.helpers import settings as settings_mod  # noqa: E402
 
 _draw_cursor_pointer_overlay = draw_cursor_pointer_overlay
 _draw_mouse_overlay = draw_cursor_pointer_overlay
@@ -609,6 +612,47 @@ class ComputerScreenInject(Extension):
         catalog_txt = credential_store.catalog_text_block()
         if catalog_txt:
             content.append({"type": "text", "text": catalog_txt + "\n\n"})
+
+        # task_done turn counter + optional reminder (Settings: computer_task_done_reminder_after_turns; 0 = off)
+        td_key = task_data_memory.COMPUTER_TURNS_SINCE_TASK_DONE_KEY
+        try:
+            prev_turns = int(self.agent.get_data(td_key) or 0)
+        except (TypeError, ValueError):
+            prev_turns = 0
+        self.agent.set_data(td_key, prev_turns + 1)
+        turns = prev_turns + 1
+        try:
+            n_rem = int(settings_mod.get_settings().get("computer_task_done_reminder_after_turns", 20))
+        except (TypeError, ValueError):
+            n_rem = 20
+        if n_rem > 0 and turns >= n_rem:
+            content.append(
+                {
+                    "type": "text",
+                    "text": (
+                        f"**Mandatory (task_done reminder):** **{turns}** assistant turns have passed since the last "
+                        f"successful **`task_done:checkpoint`** or **`task_done:read`** (threshold: **{n_rem}** in Settings). "
+                        "This is the **only** required time to call **`task_done:checkpoint`**: merge + persist + truncate. "
+                        "**Best:** if you **just finished** the current subtask’s read/extract work (or can do so in **one** more tool turn), "
+                        "do that first, then checkpoint that subtask’s `task_index` with current **`plans`** (optional `progress` / `learnings`). "
+                        "If you are still mid-subtask, checkpoint **now** with the active `task_index` and accurate `plans`/`progress`. "
+                        "Do not skip this.\n\n"
+                    ),
+                }
+            )
+
+        _mem = task_data_memory.TaskDataMemory(self.agent)
+        state_txt = _mem.read_execution_state()
+        if state_txt:
+            content.append(
+                {
+                    "type": "text",
+                    "text": (
+                        "**Persisted execution state** (plans, progress, experience — use after history truncation):\n\n"
+                        f"{state_txt}\n\n"
+                    ),
+                }
+            )
 
         # Build content blocks with proper LangChain format (list of dicts)
         # Each message's raw_content must be a list to satisfy HumanMessage validation

@@ -197,7 +197,7 @@ class ActionTools:
         if not keys:
             raise ValueError("keys is required")
         if not self.dry_run:
-            pyautogui.hotkey(*keys)
+            pyautogui.hotkey(*keys, interval=0.05)
             time.sleep(0.3)
         self.last_action = {"tool": "press_keys", "tool_input": {"keys": keys}}
         key_combo = "+".join(keys)

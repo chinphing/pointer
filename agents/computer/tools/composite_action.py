@@ -7,7 +7,6 @@ from __future__ import annotations
 import os
 import platform
 import sys
-import time
 from typing import Any, Dict
 
 from agent import Agent, LoopData
@@ -27,6 +26,18 @@ def _action_done(goal: str, args: Dict[str, Any], extra: str = "") -> Response:
     if extra:
         msg = f"Goal: {goal}. {extra} Verify result on next screenshot."
     return Response(message=msg, break_loop=False)
+
+
+def _type_action_done(goal: str, context: str) -> Response:
+    """Type-related composite actions; model should confirm on the next screenshot."""
+    ctx = context.rstrip(".")
+    return Response(
+        message=(
+            f"Goal: {goal}. Type action executed ({ctx}). "
+            "Please verify result on next screenshot."
+        ),
+        break_loop=False,
+    )
 
 
 class CompositeActionTool(Tool):
@@ -81,12 +92,8 @@ def _do_type_text_at_index(tool: CompositeActionTool, args: Dict[str, Any], acti
         else str(args.get("clear_first", "")).lower() in ("true", "1", "yes")
     )
     actions._click(pos)
-    if clear_first:
-        mod = "command" if platform.system() == "Darwin" else "ctrl"
-        actions._press_keys([mod, "a"])
-        time.sleep(0.1)
-    actions._type_text(str(text))
-    return _action_done(goal, args)
+    actions._type_text(str(text), clear_field_first=clear_first)
+    return _type_action_done(goal, "into field at annotated index (composite_action).")
 
 
 def _do_type_text_at(tool: CompositeActionTool, args: Dict[str, Any], actions: ActionTools, goal: str) -> Response:
@@ -98,7 +105,7 @@ def _do_type_text_at(tool: CompositeActionTool, args: Dict[str, Any], actions: A
         return Response(message="Missing 'text' in tool_args for type_text_at.", break_loop=False)
     actions._click(pos)
     actions._type_text(str(text))
-    return _action_done(goal, args)
+    return _type_action_done(goal, "normalized coordinates, composite_action")
 
 
 def _do_type_text_at_focused_input(tool: CompositeActionTool, args: Dict[str, Any], actions: ActionTools, goal: str) -> Response:
@@ -111,12 +118,8 @@ def _do_type_text_at_focused_input(tool: CompositeActionTool, args: Dict[str, An
         if isinstance(args.get("clear_existing"), bool)
         else str(args.get("clear_existing", "")).lower() in ("true", "1", "yes")
     )
-    if clear_existing:
-        mod = "command" if platform.system() == "Darwin" else "ctrl"
-        actions._press_keys([mod, "a"])
-        time.sleep(0.08)
-    actions._type_text(str(text))
-    return _action_done(goal, args, extra="Typed into focused input. ")
+    actions._type_text(str(text), clear_field_first=clear_existing)
+    return _type_action_done(goal, "currently focused input, composite_action")
 
 
 def _do_scroll_at_index(tool: CompositeActionTool, args: Dict[str, Any], actions: ActionTools, goal: str) -> Response:

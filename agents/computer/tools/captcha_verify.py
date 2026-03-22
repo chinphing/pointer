@@ -279,10 +279,12 @@ def _do_type(
     actions = ActionTools(dry_run=False, paste_key=["command", "v"] if platform.system() == "Darwin" else ["ctrl", "v"])
     actions._click(pos)
     time.sleep(0.1)
-    actions._type_text(answer)
+    actions._type_text(answer, clear_field_first=True)
     _captcha_log(tool.agent, "操作结束")
     return Response(
-        message=f"Goal: {goal}. Captcha answer entered into index {index_input_area}. Verify on next screenshot.",
+        message=(
+            f"Goal: {goal}. Type action executed, cleared first.  Please verify result on next screenshot."
+        ),
         break_loop=False,
     )
 

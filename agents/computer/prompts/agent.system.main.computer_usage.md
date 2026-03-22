@@ -78,6 +78,7 @@ In thoughts, briefly state: overlap evidence (what repeated), overlap size (roug
 - **When the input already has focus** (cursor in the field, or you just focused it): use **composite_action:type_text_at_focused_input** — no click needed; pass `text` and optional `clear_existing`.
 - Click text area or blank area for input box to acquire focus only when you are not typing (e.g. opening a menu). For "type into this field", prefer **composite_action:type_text_at_index** in one step.
 - Replace text with select-all + type when user intent is replace (use `clear_first: true` in **composite_action:type_text_at_index** or `clear_existing: true` in **type_text_at_focused_input**, or equivalent).
+- **Saved login (username/password):** Use **account_login** with **`system`** and optional **`user_label`** (see injected **Saved login accounts** list) plus targets: **`username_index` / `password_index`** or **`username_coord` / `password_coord`** (at least one). Omit **`fill`** to fill every provided target in one call (username before password), or set **`fill`** to **`username`** / **`password`** for a single field. **Never** pass raw secrets in `tool_args`; **never** type passwords via **composite_action**. After the username field is filled, verify the **visible** value in **thoughts** on the next screenshot. Do not write the password in thoughts or response.
 
 ### 7) Unavailable or disabled interactive elements
 

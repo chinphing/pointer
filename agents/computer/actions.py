@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import platform
 import time
 from typing import List, Optional, Tuple
 
@@ -156,9 +157,27 @@ class ActionTools:
         logger.info(result)
         return result
 
-    def _type_text(self, text: str) -> str:
-        """Type text at the current cursor location (assumes field is already focused)."""
+    def _type_text(
+        self,
+        text: str,
+        *,
+        clear_field_first: bool = False,
+        log_text: Optional[str] = None,
+    ) -> str:
+        """
+        Paste `text` at the current cursor via clipboard (assumes field focused when no prior click in caller).
+
+        clear_field_first: select-all + backspace before pasting (replace field contents).
+        log_text: if set, use this in logs and last_action instead of `text` (secrets); default logs `text`.
+        """
         self._check_stop()
+        if not self.dry_run and clear_field_first:
+            mod = "command" if platform.system() == "Darwin" else "ctrl"
+            pyautogui.hotkey(mod, "a")
+            time.sleep(0.05)
+            pyautogui.press("backspace")
+            time.sleep(0.08)
+        shown = log_text if log_text is not None else text
         old = pyperclip.paste()
         pyperclip.copy(text)
         time.sleep(0.1)
@@ -166,8 +185,10 @@ class ActionTools:
         time.sleep(0.05)
         pyperclip.copy(old)
         time.sleep(0.2)
-        self.last_action = {"tool": "type_text", "tool_input": {"text": text}}
-        result = f"Typed text: '{text}'."
+        self.last_action = {"tool": "type_text", "tool_input": {"text": shown}}
+        result = (
+            f"Type action executed (text: '{shown}'). Please verify result on next screenshot."
+        )
         logger.info(result)
         return result
 

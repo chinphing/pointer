@@ -41,6 +41,7 @@ import coord_convert  # noqa: E402
 import screen as screen_mod  # noqa: E402
 import som_util  # noqa: E402
 import os_prompts  # noqa: E402
+import credential_store  # noqa: E402
 
 import focus_position  # noqa: E402
 import storage_paths  # noqa: E402
@@ -604,6 +605,10 @@ class ComputerScreenInject(Extension):
         os_shortcuts = os_prompts.format_os_context(prompts_base_dir)
         if os_shortcuts:
             content.append({"type": "text", "text": os_shortcuts})
+
+        catalog_txt = credential_store.catalog_text_block()
+        if catalog_txt:
+            content.append({"type": "text", "text": catalog_txt + "\n\n"})
 
         # Build content blocks with proper LangChain format (list of dicts)
         # Each message's raw_content must be a list to satisfy HumanMessage validation

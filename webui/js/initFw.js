@@ -2,6 +2,7 @@ import * as initializer from "./initializer.js";
 import * as _modals from "./modals.js";
 import * as _components from "./components.js";
 import { registerAlpineMagic } from "./confirmClick.js";
+import { registerComputerCredentialsAlpine } from "../components/settings/external/computer-credentials.js";
 
 // initialize required elements
 await initializer.initialize();
@@ -11,6 +12,8 @@ await import("../vendor/alpine/alpine.min.js");
 
 // register $confirmClick magic helper for inline button confirmations
 registerAlpineMagic();
+
+registerComputerCredentialsAlpine();
 
 // add x-destroy directive to alpine
 Alpine.directive(

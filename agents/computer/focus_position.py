@@ -73,14 +73,23 @@ def _get_focus_position_macos() -> Optional[Tuple[int, int]]:
     try:
         script = """
         tell application "System Events"
-            set fe to first focused UI element
+            -- 获取当前最前面的进程
+            set frontApp to first application process whose frontmost is true
             try
-                set b to bounds of fe
-                set x to (item 1 of b) + 12
-                set y to (item 2 of b) + (item 4 of b - item 2 of b) / 2
+                -- 尝试获取该进程中拥有焦点的元素
+                set fe to (first UI element of frontApp whose focused is true)
+                
+                -- 如果找不到 focus，尝试获取整个窗口（备选方案）
+                -- set fe to window 1 of frontApp
+                
+                set {x1, y1, x2, y2} to (get value of attribute "AXFrame" of fe) -- 另一种更通用的获取坐标方式
+                
+                set x to x1 + 12
+                set y to y1 + (y2 - y1) / 2
+                
                 return (round x) as text & "," & (round y) as text
-            on error
-                return ""
+            on error err
+                return "Error: " & err -- 打印具体错误方便调试
             end try
         end tell
         """

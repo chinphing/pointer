@@ -1,6 +1,7 @@
 """
-鼠标移动策略：仅生成（处理后的）坐标轨迹与各步间隔时间，不执行底层指针操作；由调用方 moveTo/sleep 等解耦。
-轨迹采样：`mouse_path` 贝塞尔 / `mouse_path_spline` 三次样条；间隔与时间分布由各类 Move 实现。
+Mouse movement planning: only produces processed coordinate paths and per-step dwell times;
+does not call low-level pointer APIs (caller uses moveTo/sleep, etc.).
+Path sampling: `mouse_path` Bézier / `mouse_path_spline` cubic spline; timing is implemented by Move subclasses.
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ import mouse_path as _mouse_path
 
 
 def ease_out_intervals(n: int, total_time: float) -> List[float]:
-    """先快后慢：n 个间隔（秒）之和为 total_time。"""
+    """Ease-out: `n` intervals (seconds) sum to `total_time`."""
     if n <= 0:
         return []
     if n == 1:
@@ -29,7 +30,7 @@ def ease_out_intervals(n: int, total_time: float) -> List[float]:
 
 
 def ease_in_out_intervals(n: int, total_time: float) -> List[float]:
-    """ease-in-out：起步与结束慢、中间快。"""
+    """Ease-in-out: slow start/end, faster middle."""
     if n <= 0:
         return []
     if n == 1:
@@ -56,7 +57,7 @@ def add_path_jitter(
     *,
     skip_first_last: bool = True,
 ) -> List[Tuple[float, float]]:
-    """对路径中间点沿法向随机抖动；max_px<=0 时原样返回。"""
+    """Random normal jitter on interior path points; if max_px<=0 return unchanged."""
     if not points or max_px <= 0:
         return points
     n = len(points)
@@ -86,7 +87,7 @@ def add_path_jitter(
 
 
 def spread_interval_perturbation(intervals: List[float], factor: float) -> List[float]:
-    """对每段间隔加随机扰动，总和不变。"""
+    """Random multiplicative perturbation per interval; total sum preserved."""
     if not intervals or factor <= 0:
         return intervals
     total = sum(intervals)
@@ -99,13 +100,13 @@ def spread_interval_perturbation(intervals: List[float], factor: float) -> List[
 
 
 class BaseMove(ABC):
-    """路径后处理 + 步进间隔由子类实现；`plan` 产出调用方可执行的 (path, intervals)。"""
+    """Subclasses implement path post-processing and per-step intervals; `plan` returns (path, intervals)."""
 
     default_interval: float = 0.03
 
     @abstractmethod
     def postprocess_path(self, points: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
-        """对贝塞尔采样点列做变换（如抖动）；无需变换时返回原列表或拷贝。"""
+        """Transform sampled points (e.g. jitter); return original or copy if no-op."""
 
     @abstractmethod
     def intervals_for_steps(
@@ -117,7 +118,7 @@ class BaseMove(ABC):
         ease_in_out: bool,
         perturb_intervals: bool,
     ) -> List[float]:
-        """为每个路径点生成到达该点后的休眠时长（秒）；与 path 等长。"""
+        """Sleep duration (seconds) after reaching each path point; same length as path."""
 
     def plan(
         self,
@@ -128,7 +129,7 @@ class BaseMove(ABC):
         ease_in_out: bool = False,
         perturb_intervals: bool = True,
     ) -> Tuple[List[Tuple[float, float]], List[float]]:
-        """返回 (处理后的路径, 每步间隔)。空输入返回 ([], [])。"""
+        """Return (processed path, per-step intervals). Empty input → ([], [])."""
         if not points:
             return [], []
         path = self.postprocess_path(points)
@@ -147,8 +148,8 @@ class BaseMove(ABC):
 
 class SimpleMove(BaseMove):
     """
-    两点间用 `mouse_path_spline`（与 `mouse_path` 共用控制点）。
-    弯曲度：`curvature` / `bend_sign` / `bend_pixels` / `control_jitter_px` 与 `mouse_path_spline` 一致。
+    Between two points use `mouse_path_spline` (same control points as `mouse_path`).
+    Bend: same `curvature` / `bend_sign` / `bend_pixels` / `control_jitter_px` as `mouse_path_spline`.
     """
 
     def __init__(
@@ -244,7 +245,7 @@ class SimpleMove(BaseMove):
 
 
 class CompositeMove(BaseMove):
-    """贝塞尔轨迹 + 可选法向抖动；总时长模式下间隔为 ease-out / ease-in-out 并可做时间扰动。"""
+    """Bézier path + optional normal jitter; total-time mode uses ease-out / ease-in-out with interval perturbation."""
 
     def __init__(
         self,

@@ -76,8 +76,8 @@ def _scroll_region_bbox_from_diff_image(
     From a single grayscale difference image (uint8), compute all significant changed
     regions as a list of bboxes (x1, y1, x2, y2). Uses grid scaling, threshold, morphology,
     optional dilation (merge_gap), and connected components; returns one bbox per region.
-    padding: 连通域外接矩形映射回原图后向四周扩展的像素数，避免裁切时贴边漏掉边缘；单位原图像素。
-    merge_gap: 做连通域前先膨胀的半径（缩放图像素）。>0 时相距不超过 merge_gap 像素的块会并成一块。
+    padding: pixels to expand each component's bounding box on the full-res image (avoids clipping edge pixels).
+    merge_gap: dilation radius in scaled pixels before connected components; >0 merges nearby blobs.
     """
     h, w = diff.shape[:2]
     cell_size = max(1, int(cell_size))
@@ -159,7 +159,7 @@ def find_nearest_scroll_region(
 
 
 # -----------------------------------------------------------------------------
-# 1) Base: scroll region bbox from two images (absolute difference heatmap)
+# 1) Base: scroll-region bbox from two images (absolute difference heatmap)
 # -----------------------------------------------------------------------------
 
 
@@ -179,8 +179,8 @@ def scroll_region_bbox_from_diff(
     Base heatmap method: compute scroll regions as a list of bboxes (x1, y1, x2, y2) from the
     absolute difference of two screenshots. Uses grid (cell_size), threshold,
     morphology, optional dilation (merge_gap), and connected components.
-    padding: 差异区域外接矩形向四周扩展的像素数（原图），避免贴边裁切。
-    merge_gap: 膨胀半径（缩放图像素），>0 时相近的差异块会合并。
+    padding: pixels to pad diff-region bboxes on the original image (avoids edge clipping).
+    merge_gap: dilation radius in scaled pixels; >0 merges nearby diff blobs.
     """
     g1 = _to_gray_uint8(img_before)
     g2 = _to_gray_uint8(img_after)
@@ -284,8 +284,8 @@ def compute_dynamic_mask_bboxes(
     Compute bboxes of dynamic content (video/animations) from two screenshots
     taken with a time gap (e.g. 1s), without scrolling. Uses the same pipeline
     as scroll_region_bbox_from_diff but returns all changed regions as a list.
-    padding: 差异区域外接矩形向四周扩展的像素数（原图）。
-    merge_gap: 膨胀半径，>0 时相近的差异块会合并。
+    padding: pixels to pad diff-region bboxes on the original image.
+    merge_gap: dilation radius; >0 merges nearby diff blobs.
     """
     g1 = _to_gray_uint8(img_before)
     g2 = _to_gray_uint8(img_after)
@@ -351,7 +351,7 @@ def scroll_region_bbox_from_diff_masked(
     Same as scroll_region_bbox_from_diff, but before computing the final bbox
     the difference image has all mask_bboxes regions set to 0 (so video/animations
     do not affect the scroll region detection). mask_bboxes typically come from
-    compute_dynamic_mask_bboxes(before_wait, after_wait_1s). padding: 差异区域外接矩形向四周扩展像素数。merge_gap: 膨胀半径。
+    compute_dynamic_mask_bboxes(before_wait, after_wait_1s). padding: bbox pad on original image; merge_gap: dilation radius.
     """
     g1 = _to_gray_uint8(img_before)
     g2 = _to_gray_uint8(img_after)

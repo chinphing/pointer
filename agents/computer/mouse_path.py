@@ -1,7 +1,7 @@
 """
-鼠标轨迹：三次贝塞尔 / 三次样条采样，支持两点一段与多点串联。
-弯曲度由 curvature 控制；p1/p2 在弦向+法向有随机微扰（control_jitter_px，默认约 2px，0 关闭）。
-bend_pixels 可覆盖弯曲；bend_sign 固定或随机弯向。
+Mouse trajectories: cubic Bézier / cubic-spline sampling for one segment or chained points.
+Bend is controlled by `curvature`; p1/p2 get tangential + normal jitter (`control_jitter_px`, default ~2px, 0 disables).
+`bend_pixels` overrides bend; `bend_sign` fixes or randomizes bend direction.
 """
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
-# 基准：法向偏移 ≈ chord_length * CURVATURE_BASE_RATIO，再乘 curvature，并夹在 [MIN, MAX] 像素
+# Normal offset ≈ chord_length * CURVATURE_BASE_RATIO, scaled by curvature, clamped to [MIN, MAX] px
 _CURVATURE_BASE_RATIO = 0.12
 _MIN_BEND_PX = 5.0
 _MAX_BEND_PX = 60.0
-# p1、p2 在切向/法向各加 uniform[-j,j]（像素）；None 用默认值
+# p1/p2: tangential/normal uniform[-j,j] jitter (px); None uses default
 _DEFAULT_CONTROL_JITTER_PX = 2.0
 
 
@@ -26,12 +26,12 @@ def _bezier_segment(
     num_points: int = 10,
 ) -> List[Tuple[float, float]]:
     """
-    三次贝塞尔曲线 B(t) = (1-t)^3 P0 + 3(1-t)^2 t P1 + 3(1-t) t^2 P2 + t^3 P3。
-    p0..p3 为 (x,y)，返回 num_points 个插值点（不含起点，含终点，避免重复拼接时重复）。
+    Cubic Bézier B(t) = (1-t)^3 P0 + 3(1-t)^2 t P1 + 3(1-t) t^2 P2 + t^3 P3.
+    p0..p3 are (x,y); returns `num_points` samples (excludes start, includes end to avoid duplicate joints).
     """
     if num_points < 1:
         num_points = 1
-    t = np.linspace(0, 1, num_points + 1)[1:]  # 不含 t=0，含 t=1
+    t = np.linspace(0, 1, num_points + 1)[1:]  # skip t=0, include t=1
     one_t = 1 - t
     x = (
         one_t ** 3 * p0[0]
@@ -58,12 +58,12 @@ def _segment_control_points(
     control_jitter_px: Optional[float] = None,
 ) -> Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float]]:
     """
-    四个控制点：p0、p3 为端点；p1、p2 在弦的 1/3、2/3 处，并沿左法向偏移 bend。
+    Four control points: p0/p3 endpoints; p1/p2 at 1/3 and 2/3 along chord, offset by `bend` along left normal.
 
-    - bend_pixels 非 None：直接使用该有符号像素偏移（覆盖 curvature / bend_sign）。
-    - 否则：base = clip(0.12 * 弦长, 5, 60)，bend = curvature * base * sign；
-      curvature <= 0 为直线；bend_sign 为 +1 / -1 固定弯向，None 则随机 ±1。
-    - control_jitter_px：对 p1、p2 在切向、法向各加独立均匀随机扰动；None 用模块默认，0 关闭。
+    - If `bend_pixels` is set: use that signed pixel offset (overrides curvature / bend_sign).
+    - Else: base = clip(0.12 * chord, 5, 60), bend = curvature * base * sign;
+      curvature <= 0 → straight; bend_sign +1 / -1 fixes side, None → random ±1.
+    - control_jitter_px: independent uniform jitter on p1/p2 in tangent and normal; None → module default, 0 off.
     """
     x0, y0 = float(point_from[0]), float(point_from[1])
     x1, y1 = float(point_to[0]), float(point_to[1])
@@ -120,12 +120,12 @@ def mouse_path_spline(
     control_jitter_px: Optional[float] = None,
 ) -> List[Tuple[float, float]]:
     """
-    与 mouse_path 共用四控制点；对 x(u)、y(u) 做 CubicSpline 并采样。
-    curvature：弯曲度，0 为直线，1 为默认强度，可 >1 更弯。
-    bend_sign：+1 / -1 固定法向侧，None 时随机（仅当未传 bend_pixels 且 curvature>0）。
-    bend_pixels：若给定则直接作为有符号像素偏移，忽略 curvature / bend_sign。
-    control_jitter_px：p1/p2 随机扰动幅度（像素），0 关闭，None 用默认。
-    无 scipy 时回退为 mouse_path（贝塞尔）。
+    Same four control points as `mouse_path`; fit CubicSpline on x(u), y(u) and sample.
+    curvature: 0 straight, 1 default strength, >1 stronger bend.
+    bend_sign: +1 / -1 fixes normal side; None random (only if bend_pixels unset and curvature>0).
+    bend_pixels: if set, signed pixel offset; ignores curvature / bend_sign.
+    control_jitter_px: p1/p2 jitter amplitude (px), 0 off, None default.
+    Falls back to `mouse_path` (Bézier) if scipy is missing.
     """
     if num_points < 1:
         num_points = 1
@@ -171,7 +171,7 @@ def mouse_path(
     control_jitter_px: Optional[float] = None,
 ) -> List[Tuple[float, float]]:
     """
-    从 point_from 到 point_to 的三次贝塞尔轨迹。参数语义同 mouse_path_spline。
+    Cubic Bézier from point_from to point_to. Parameters match `mouse_path_spline`.
     """
     p0, p1, p2, p3 = _segment_control_points(
         point_from,
@@ -194,9 +194,9 @@ def mouse_path_through_points(
     control_jitter_px: Optional[float] = None,
 ) -> List[Tuple[float, float]]:
     """
-    多点串联：每段调用 mouse_path。
-    bend_sign=None 时每段独立随机弯向；若需整段同侧可传 bend_sign=±1。
-    每段 p1/p2 独立扰动。
+    Chain segments with `mouse_path`.
+    bend_sign=None → random bend per segment; pass ±1 for consistent side.
+    Independent p1/p2 jitter per segment.
     """
     if not points or len(points) < 2:
         return []

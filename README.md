@@ -1,5 +1,7 @@
 # Pointer
 
+[简体中文](README.zh-CN.md)
+
 > A **real-screen** computer-use agent powered by multimodal LLMs. Built on **Agent Zero** with the **Computer (Pointer)** profile: see the display like a human, interact with UIs, fill forms, and complete tasks across applications.
 
 **Model support:** Only **DashScope `qwen3.5-plus`** is verified so far. You must set **`api_base`** to the correct regional endpoint as well as the API key—see [§4.4](#44-api-keys-and-models).
@@ -22,6 +24,8 @@ Pointer runs as an **Agent Zero profile (`computer`)**, so tool orchestration, d
 ---
 
 ## 2. Use Cases and Demos
+
+**Goal:** We aim to **fully replace repetitive, physical computer work**—the routine clicking, typing, and screen navigation that people do every day—with capable automation. That includes **personal daily tasks** (your own desktop and browser workflows) and **enterprise employees’ day-to-day work** (repeated operational steps across standard business apps and web consoles), wherever vision, judgment, and multi-step control are needed.
 
 **Example use cases:**
 
@@ -137,11 +141,13 @@ python run_ui.py
 
 ## 5. Roadmap
 
-| Horizon | Items |
-|---------|--------|
-| **Near term** | *(TBD)* |
-| **Mid term** | *(TBD)* |
-| **Long term** | *(TBD)* |
+1. **Lightweight RPA** — Web data extraction, chat-driven tasks, and visiting social or content sites (e.g. Xiaohongshu, X, Facebook) where work stays mostly in the browser or a small set of familiar UIs.
+
+2. **Cross-application work** — Uploading and downloading files across apps, delivering results in chat when a task completes, and auto-filling forms that span multiple programs or sites.
+
+3. **Research** — Work on professional or domain data that is public but **requires login** to access; produce and hand off research outputs—for example, **legal case research** and similar deep dives.
+
+4. **Digital coworkers** — Full loop: **receive a task → plan → execute on the machine → deliver results**, aimed at recurring operational work patterned after roles such as **developers**, **HR**, and **finance**.
 
 ---
 

@@ -1,4 +1,4 @@
-# Supported model providers for Agent Zero
+# Supported model providers for Pointer
 # ---------------------------------------
 #
 # Each provider type ("chat", "embedding") contains a mapping of provider IDs
@@ -18,7 +18,7 @@
 
 chat:
   a0_venice:
-    name: Agent Zero API
+    name: Pointer API
     litellm_provider: openai
     kwargs:
       api_base: https://llm.agent-zero.ai/v1
@@ -81,8 +81,8 @@ chat:
     litellm_provider: openrouter
     kwargs:
       extra_headers:
-        "HTTP-Referer": "https://agent-zero.ai/"
-        "X-Title": "Agent Zero"
+        "HTTP-Referer": "https://pointer.readflowai.com"
+        "X-Title": "Pointer"
   sambanova:
     name: Sambanova
     litellm_provider: sambanova
@@ -142,8 +142,8 @@ embedding:
     kwargs:
       api_base: https://openrouter.ai/api/v1
       extra_headers:
-        "HTTP-Referer": "https://agent-zero.ai/"
-        "X-Title": "Agent Zero"
+        "HTTP-Referer": "https://pointer.readflowai.com"
+        "X-Title": "Pointer"
   other:
     name: Other OpenAI compatible
     litellm_provider: openai

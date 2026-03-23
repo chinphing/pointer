@@ -93,7 +93,7 @@ def format_messages_markdown(messages: List[BaseMessage]) -> str:
     """Single document: human-readable, safe to copy without multi-MB base64."""
     chunks: List[str] = []
     chunks.append(
-        "<!-- Agent Zero — development prompt dump. Images shown as [IMAGE omitted]. -->\n"
+        "<!-- Pointer — development prompt dump. Images shown as [IMAGE omitted]. -->\n"
     )
     for i, msg in enumerate(messages):
         role = _message_role_label(msg)

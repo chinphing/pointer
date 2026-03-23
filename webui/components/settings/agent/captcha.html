@@ -62,36 +62,6 @@
             </div>
           </div>
 
-          <div class="field">
-            <div class="field-label">
-              <div class="field-title">Auto-refresh screenshot</div>
-              <div class="field-description">When enabled, the right-panel screenshot refreshes at the interval below. When disabled, it only updates when the agent takes a new screenshot.</div>
-            </div>
-            <div class="field-control">
-              <input type="checkbox" x-model="$store.settings.settings.computer_screen_preview_auto_refresh" />
-            </div>
-          </div>
-
-          <div class="field">
-            <div class="field-label">
-              <div class="field-title">Screenshot preview interval (seconds)</div>
-              <div class="field-description">How often the right-panel screenshot refreshes when auto-refresh is on. Default 5.</div>
-            </div>
-            <div class="field-control">
-              <input type="number" min="1" max="60" step="1" x-model.number="$store.settings.settings.computer_screen_preview_interval_sec" />
-            </div>
-          </div>
-
-          <div class="field">
-            <div class="field-label">
-              <div class="field-title">task_done reminder (assistant turns)</div>
-              <div class="field-description">After this many assistant (vision) turns without task_done:checkpoint or task_done:read, inject the mandatory checkpoint reminder — the only required time to checkpoint (default 20). Set 0 to disable.</div>
-            </div>
-            <div class="field-control">
-              <input type="number" min="0" max="200" step="1" x-model.number="$store.settings.settings.computer_task_done_reminder_after_turns" />
-            </div>
-          </div>
-
         </div>
       </template>
     </div>

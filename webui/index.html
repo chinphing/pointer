@@ -4,8 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-    <title>Agent Zero</title>
-    <link rel="icon" type="image/svg+xml" href="public/favicon.svg">
+    <title>Pointer</title>
+    <link rel="icon" type="image/png" href="public/logo.png" sizes="256x256">
+    <link rel="apple-touch-icon" href="public/logo.png">
     <link rel="stylesheet" href="index.css">
     <link rel="stylesheet" href="css/messages.css">
     <link rel="stylesheet" href="components/messages/action-buttons/simple-action-buttons.css">
@@ -117,20 +118,31 @@
                     <div id="screenshot-panel" class="screenshot-panel" x-data
                          :class="{ 'screenshot-panel--collapsed': $store.computerScreen && !$store.computerScreen.screenshotPanelVisible }">
                         <div class="screenshot-panel__header">
-                            <span class="screenshot-panel__title">原始截图</span>
+                            <span class="screenshot-panel__title">Live screen</span>
                             <button type="button" class="screenshot-panel__toggle"
                                     @click="$store.computerScreen.toggleScreenshotPanel()"
-                                    :title="$store.computerScreen.screenshotPanelVisible ? '收起' : '展开'"
+                                    :title="$store.computerScreen.screenshotPanelVisible ? 'Collapse' : 'Expand'"
                                     x-text="$store.computerScreen.screenshotPanelVisible ? '◀' : '▶'"></button>
                         </div>
                         <div class="screenshot-panel__body" x-show="$store.computerScreen.screenshotPanelVisible">
-                            <div class="screenshot-panel__img-wrap" x-show="$store.computerScreen.computerScreenRaw">
-                                <img x-show="$store.computerScreen.computerScreenRaw"
-                                     :src="$store.computerScreen.computerScreenRaw"
-                                     alt="Screen capture"
-                                     class="screenshot-panel__img" />
+                            <div class="screenshot-panel__section screenshot-panel__section--live">
+                                <div class="screenshot-panel__img-wrap" x-show="$store.computerScreen.computerScreenRaw">
+                                    <img x-show="$store.computerScreen.computerScreenRaw"
+                                         :src="$store.computerScreen.computerScreenRaw"
+                                         alt="Live screen capture"
+                                         class="screenshot-panel__img" />
+                                </div>
+                                <div x-show="!$store.computerScreen.computerScreenRaw" class="screenshot-panel__placeholder">No capture yet</div>
                             </div>
-                            <div x-show="!$store.computerScreen.computerScreenRaw" class="screenshot-panel__placeholder">暂无截图</div>
+                            <div class="screenshot-panel__section screenshot-panel__section--model"
+                                 x-show="$store.computerScreen.computerScreenModelInput">
+                                <div class="screenshot-panel__section-label">Model input (LLM)</div>
+                                <div class="screenshot-panel__img-wrap">
+                                    <img :src="$store.computerScreen.computerScreenModelInput"
+                                         alt="Model-visible frame"
+                                         class="screenshot-panel__img" />
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

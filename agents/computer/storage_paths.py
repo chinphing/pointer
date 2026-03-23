@@ -15,7 +15,7 @@ import os
 
 
 def get_workdir_path() -> str:
-    """Absolute path to the configured Agent Zero work directory."""
+    """Absolute path to the configured Pointer work directory."""
     try:
         from python.helpers import settings
 

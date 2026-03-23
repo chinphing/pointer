@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Skills CLI - Easy skill management for Agent Zero
+Skills CLI - Easy skill management for Pointer
 
 Usage:
     python -m python.helpers.skills_cli list              List all skills
@@ -254,7 +254,7 @@ def print_skill_table(skills: List[Skill]):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Agent Zero Skills CLI",
+        description="Pointer Skills CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

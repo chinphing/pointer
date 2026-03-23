@@ -13,8 +13,8 @@
     </button>
 
     <div id="logo-container">
-      <a href="https://github.com/agent0ai/agent-zero" target="_blank" rel="noopener noreferrer">
-        <img src="./public/splash.jpg" alt="a0" width="22" height="22">
+      <a href="https://github.com/chinphing/pointer.git" target="_blank" rel="noopener noreferrer">
+        <img src="./public/logo.png" alt="Logo" width="22" height="22">
       </a>
     </div>
   </div>
@@ -61,9 +61,7 @@
       transition: margin-left var(--transition-speed) ease-in-out;
     }
     #logo-container a { color: inherit; text-decoration: none; }
-    #logo-container img { border-radius: var(--spacing-xs); width: auto; height: 2.6rem; -webkit-transition: filter 0.3s ease; transition: filter 0.3s ease; }
-
-    .light-mode #logo-container img { -webkit-filter: invert(100%) grayscale(100%); filter: invert(100%) grayscale(100%); }
+    #logo-container img { border-radius: var(--spacing-xs); width: auto; height: 2.6rem; object-fit: contain; -webkit-transition: opacity 0.3s ease; transition: opacity 0.3s ease; }
 
     @media (max-width: 768px) {
       .toggle-sidebar-button { position: fixed; left: var(--spacing-md); z-index: 1004; }

@@ -2,10 +2,14 @@ import { createStore } from "/js/AlpineStore.js";
 import { getCsrfToken } from "/js/api.js";
 
 const model = {
-  /** Image URL: blob URL (from binary preview) or data URL (from snapshot). Used as img src. */
+  /** Main panel: blob URL from periodic preview, or data URL when auto-refresh is off. */
   computerScreenRaw: "",
-  /** Mouse position in screenshot image coords [x, y] for cursor overlay. From snapshot.computer_screen_mouse. */
+  /** Mouse position in main screenshot image coords [x, y] (preview API or snapshot when static). */
   computerScreenMouse: null,
+  /** Optional: inject / model-visible frame (data URL), only when setting show_model_input is on. */
+  computerScreenModelInput: "",
+  /** Mouse for model-input image coords (from snapshot). */
+  computerScreenModelMouse: null,
   /** Whether the screenshot panel is visible (default true). User can collapse it. */
   screenshotPanelVisible: true,
   /** Interval in seconds for right-panel screenshot refresh (from settings). */
@@ -14,6 +18,10 @@ const model = {
   _previewRefreshTimerId: null,
   /** Last blob URL created for preview; revoked when replacing or stopping. */
   _lastPreviewBlobUrl: null,
+
+  previewRefreshActive() {
+    return this._previewRefreshTimerId != null;
+  },
 
   setComputerScreenRaw(value) {
     if (this._lastPreviewBlobUrl && this._lastPreviewBlobUrl !== value) {
@@ -31,7 +39,19 @@ const model = {
     }
   },
 
-  /** Start periodic screenshot refresh for right panel (every previewIntervalSec seconds). Binary JPEG + mouse in header. */
+  setComputerScreenModelInput(value) {
+    this.computerScreenModelInput = value && typeof value === "string" ? value : "";
+  },
+
+  setComputerScreenModelMouse(xy) {
+    if (xy && Array.isArray(xy) && xy.length >= 2 && Number.isFinite(xy[0]) && Number.isFinite(xy[1])) {
+      this.computerScreenModelMouse = [Number(xy[0]), Number(xy[1])];
+    } else {
+      this.computerScreenModelMouse = null;
+    }
+  },
+
+  /** Start periodic JPEG preview for main panel; first frame loads immediately. */
   startPreviewRefresh(intervalSec) {
     this.stopPreviewRefresh();
     const sec = Math.max(1, Math.min(60, Number(intervalSec) || 5));
@@ -66,19 +86,18 @@ const model = {
         })
         .catch(() => {});
     };
+    tick();
     self._previewRefreshTimerId = setInterval(tick, ms);
   },
 
-  /** Stop periodic screenshot refresh (e.g. when session ends or switching away). Do not revoke the last blob URL so the last screenshot stays visible. */
+  /** Stop periodic preview; keep last blob URL visible until replaced. */
   stopPreviewRefresh() {
     if (this._previewRefreshTimerId != null) {
       clearInterval(this._previewRefreshTimerId);
       this._previewRefreshTimerId = null;
     }
-    // Keep _lastPreviewBlobUrl so the last frame remains visible when session ends; it is replaced/revoked on next startPreviewRefresh or setComputerScreenRaw.
   },
 
-  /** Sync #right-panel class so chat area expands when panel collapsed (reusable for toggle and init). */
   _syncCollapsedClass() {
     const el = document.getElementById("right-panel");
     if (!el) return;

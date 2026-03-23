@@ -15,7 +15,7 @@ from python.helpers.print_style import PrintStyle
 
 class BackupService:
     """
-    Core backup and restore service for Agent Zero.
+    Core backup and restore service for Pointer.
 
     Features:
     - JSON-based metadata with user-editable path specifications
@@ -27,7 +27,7 @@ class BackupService:
 
     def __init__(self):
         self.agent_zero_version = self._get_agent_zero_version()
-        self.agent_zero_root = files.get_abs_path("")  # Resolved Agent Zero root
+        self.agent_zero_root = files.get_abs_path("")  # Resolved Pointer root
 
         # Build base paths map for pattern resolution
         self.base_paths = {
@@ -55,7 +55,7 @@ class BackupService:
     def _get_default_patterns(self) -> str:
         """Get default backup patterns with resolved absolute paths.
 
-        Only includes Agent Zero project directory patterns.
+        Only includes Pointer project directory patterns.
         """
         # Ensure paths don't have double slashes
         agent_root = self.agent_zero_root.rstrip('/')
@@ -66,7 +66,7 @@ class BackupService:
 """
 
     def _get_agent_zero_version(self) -> str:
-        """Get current Agent Zero version"""
+        """Get current Pointer version"""
         try:
             # Get version from git info (same as run_ui.py)
             gitinfo = git.get_git_info()
@@ -198,7 +198,7 @@ class BackupService:
     def _translate_patterns(self, patterns: List[str], backup_metadata: Dict[str, Any]) -> List[str]:
         """Translate patterns from backed up system to current system.
 
-        Replaces the backed up Agent Zero root path with the current Agent Zero root path
+        Replaces the backed up Pointer root path with the current Pointer root path
         in all patterns if there's an exact match at the beginning of the pattern.
 
         Args:
@@ -755,7 +755,7 @@ class BackupService:
     def _translate_restore_path(self, archive_path: str, backup_metadata: Dict[str, Any]) -> str:
         """Translate file path from backed up system to current system.
 
-        Replaces the backed up Agent Zero root path with the current Agent Zero root path
+        Replaces the backed up Pointer root path with the current Pointer root path
         if there's an exact match at the beginning of the path.
 
         Args:

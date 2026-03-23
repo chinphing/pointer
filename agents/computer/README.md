@@ -113,11 +113,15 @@ When there is no element index, the model may use **mouse:click_at** with `x`, `
 
 Set `vision_coordinate_system: "kimi"` in the Agent config to switch; default is `"qwen"`.
 
-### 4. CAPTCHA (`captcha_verify`)
+### 4. Web UI — Computer settings
 
-Configure **DaTi** at system level (same tier as Chat/Util/Browser). **Option 1**: **Settings → Agent Settings → CAPTCHA / DaTi** for `dati_api_url`, `dati_authcode`, `dati_typeno`, `dati_author`, or edit `usr/settings.json`. **Option 2**: env `A0_SET_dati_*` or root `.env`. Missing fields fall back to env/defaults.
+**Settings → Agent → Computer**: live right-panel screenshot refresh (`computer_screen_preview_auto_refresh`, `computer_screen_preview_interval_sec`), optional **model-input** strip (`computer_screen_show_model_input`), and **task_done** reminder turns (`computer_task_done_reminder_after_turns`). CAPTCHA/DaTi stays under **CAPTCHA / DaTi**.
 
-### 5. Logins (`account_login`)
+### 5. CAPTCHA (`captcha_verify`)
+
+Configure **DaTi** at system level (same tier as Chat/Util/Browser). **Option 1**: **Settings → Agent → CAPTCHA / DaTi** for `dati_api_url`, `dati_authcode`, `dati_typeno`, `dati_author`, or edit `usr/settings.json`. **Option 2**: env `A0_SET_dati_*` or root `.env`. Missing fields fall back to env/defaults.
+
+### 6. Logins (`account_login`)
 
 When using **`account_login`**, **do not** put plaintext passwords or usernames in `tool_args`. Pass **`system`** (site/app name) and optional **`user_label`**, plus index or coordinate targets.
 
@@ -127,7 +131,7 @@ When using **`account_login`**, **do not** put plaintext passwords or usernames 
 
 Methods: **`account_login:fill_at_indices`** or **`fill_at_coordinates`**; `fill` may be **`username`** / **`password`** or omitted to fill multiple fields. See `prompts/agent.system.tool.account_login.md`.
 
-### 6. OS-specific shortcuts
+### 7. OS-specific shortcuts
 
 ComputerUse supports macOS, Windows, and Linux; each inject loads the matching file:
 

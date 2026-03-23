@@ -342,28 +342,41 @@ export async function applySnapshot(snapshot, options = {}) {
 
   updateProgress(snapshot.log_progress, snapshot.log_progress_active);
 
-  // Update computer raw screenshot and mouse position for right-panel preview (computer profile).
-  // Session running: update image + start/stop timer. Session ended (context still computer): keep last screenshot.
+  // Computer profile: main panel = live JPEG preview when auto-refresh on; optional second strip = model inject (setting).
   const hasScreenRaw = typeof snapshot.computer_screen_raw === "string" && snapshot.computer_screen_raw.length > 0;
   const contextIsComputer = Boolean(snapshot.context_is_computer);
-  if (hasScreenRaw) {
-    computerScreenStore.setComputerScreenRaw(snapshot.computer_screen_raw);
-    computerScreenStore.setComputerScreenMouse(snapshot.computer_screen_mouse ?? null);
-    const sessionActive = Boolean(snapshot.log_progress_active);
-    if (sessionActive && snapshot.computer_screen_preview_auto_refresh !== false) {
-      const intervalSec = snapshot.computer_screen_preview_interval_sec ?? 5;
-      computerScreenStore.startPreviewRefresh(intervalSec);
-    } else {
-      computerScreenStore.stopPreviewRefresh();
-    }
-  } else if (contextIsComputer) {
-    // Session ended or not started: keep last screenshot and mouse; only stop timer.
-    computerScreenStore.stopPreviewRefresh();
-  } else {
-    // Switched to non-computer context: clear panel.
+  const autoRefresh = snapshot.computer_screen_preview_auto_refresh !== false;
+  const showModelInput = snapshot.computer_screen_show_model_input === true;
+  const intervalSec = Math.max(1, Math.min(60, Number(snapshot.computer_screen_preview_interval_sec) || 5));
+
+  if (!contextIsComputer) {
     computerScreenStore.setComputerScreenRaw("");
+    computerScreenStore.setComputerScreenModelInput("");
+    computerScreenStore.setComputerScreenModelMouse(null);
     computerScreenStore.stopPreviewRefresh();
     computerScreenStore.setComputerScreenMouse(null);
+  } else {
+    if (showModelInput && hasScreenRaw) {
+      computerScreenStore.setComputerScreenModelInput(snapshot.computer_screen_raw);
+      computerScreenStore.setComputerScreenModelMouse(snapshot.computer_screen_mouse ?? null);
+    } else {
+      computerScreenStore.setComputerScreenModelInput("");
+      computerScreenStore.setComputerScreenModelMouse(null);
+    }
+
+    if (autoRefresh) {
+      const running = computerScreenStore.previewRefreshActive();
+      const sameInterval = running && computerScreenStore.previewIntervalSec === intervalSec;
+      if (!sameInterval) {
+        computerScreenStore.startPreviewRefresh(intervalSec);
+      }
+    } else {
+      computerScreenStore.stopPreviewRefresh();
+      if (hasScreenRaw) {
+        computerScreenStore.setComputerScreenRaw(snapshot.computer_screen_raw);
+        computerScreenStore.setComputerScreenMouse(snapshot.computer_screen_mouse ?? null);
+      }
+    }
   }
 
   // Update notifications from snapshot

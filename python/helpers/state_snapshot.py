@@ -43,6 +43,8 @@ class SnapshotV1(TypedDict):
     # Right-panel screenshot refresh: enabled and interval (seconds)
     computer_screen_preview_auto_refresh: NotRequired[bool]
     computer_screen_preview_interval_sec: NotRequired[int]
+    # When True, show second strip: frame sent to the model (inject); default off
+    computer_screen_show_model_input: NotRequired[bool]
 
 @dataclass(frozen=True)
 class StateRequestV1:
@@ -427,6 +429,7 @@ async def build_snapshot_from_request(*, request: StateRequestV1) -> SnapshotV1:
     _current = _settings_mod.get_settings()
     _auto_refresh = bool(_current.get("computer_screen_preview_auto_refresh", True))
     _interval_sec = max(1, int(_current.get("computer_screen_preview_interval_sec") or 5))
+    _show_model_input = bool(_current.get("computer_screen_show_model_input", False))
 
     _agent = active_context.get_agent() if active_context else None
     _context_is_computer = bool(
@@ -452,6 +455,7 @@ async def build_snapshot_from_request(*, request: StateRequestV1) -> SnapshotV1:
         "context_is_computer": _context_is_computer,
         "computer_screen_preview_auto_refresh": _auto_refresh,
         "computer_screen_preview_interval_sec": _interval_sec,
+        "computer_screen_show_model_input": _show_model_input,
     }
 
     validate_snapshot_schema_v1(snapshot)

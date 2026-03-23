@@ -1,0 +1,59 @@
+<html>
+  <head>
+    <title>Computer</title>
+  </head>
+
+  <body>
+    <div x-data>
+      <template x-if="$store.settings.settings">
+        <div>
+          <div class="section-title">Computer</div>
+          <div class="section-description">
+            Options for the <strong>Computer</strong> agent profile (Pointer): right-panel live screen, optional model-visible frame, and task checkpoint reminders.
+          </div>
+
+          <div class="field">
+            <div class="field-label">
+              <div class="field-title">Auto-refresh screenshot</div>
+              <div class="field-description">When enabled, the large right-panel view shows a live timed capture from your screen. When disabled, that view follows the agent’s latest captured frame (same source as the model when inject runs).</div>
+            </div>
+            <div class="field-control">
+              <input type="checkbox" x-model="$store.settings.settings.computer_screen_preview_auto_refresh" />
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="field-label">
+              <div class="field-title">Show model-input screenshot</div>
+              <div class="field-description">When enabled, a second strip shows the frame stored for the model (inject). Default off — use the live view for monitoring; turn this on for debugging what the LLM sees.</div>
+            </div>
+            <div class="field-control">
+              <input type="checkbox" x-model="$store.settings.settings.computer_screen_show_model_input" />
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="field-label">
+              <div class="field-title">Screenshot preview interval (seconds)</div>
+              <div class="field-description">How often the live right-panel screenshot refreshes when auto-refresh is on. Default 5.</div>
+            </div>
+            <div class="field-control">
+              <input type="number" min="1" max="60" step="1" x-model.number="$store.settings.settings.computer_screen_preview_interval_sec" />
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="field-label">
+              <div class="field-title">task_done reminder (assistant turns)</div>
+              <div class="field-description">After this many assistant (vision) turns without task_done:checkpoint or task_done:read, inject the mandatory checkpoint reminder — the only required time to checkpoint (default 20). Set 0 to disable.</div>
+            </div>
+            <div class="field-control">
+              <input type="number" min="0" max="200" step="1" x-model.number="$store.settings.settings.computer_task_done_reminder_after_turns" />
+            </div>
+          </div>
+
+        </div>
+      </template>
+    </div>
+  </body>
+</html>

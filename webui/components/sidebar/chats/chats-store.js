@@ -12,6 +12,7 @@ import {
 import { store as notificationStore } from "/components/notifications/notification-store.js";
 import { store as tasksStore } from "/components/sidebar/tasks/tasks-store.js";
 import { store as syncStore } from "/components/sync/sync-store.js";
+import { store as computerScreenStore } from "/components/chat/computer-screen/computer-screen-store.js";
 
 const model = {
   contexts: [],
@@ -59,6 +60,9 @@ const model = {
   async selectChat(id) {
     const currentContext = getContext();
     if (id === currentContext) return; // already selected
+
+    // Sidebar / task switch: keep live screen strip collapsed by default (new chat expands explicitly).
+    computerScreenStore.setScreenshotPanelVisible(false);
 
     // Proceed with context selection
     setContext(id);
@@ -163,6 +167,7 @@ const model = {
 
       if (response.ok) {
         this.selectChat(response.ctxid);
+        computerScreenStore.setScreenshotPanelVisible(true);
         return;
       }
 
@@ -191,9 +196,9 @@ const model = {
       if (!response) {
         toast("No response returned.", "error");
       } else {
-        // Set context to first loaded chat
+        // Set context to first loaded chat (sidebar selection path → collapsed screenshot strip)
         if (response.ctxids?.[0]) {
-          setContext(response.ctxids[0]);
+          await this.selectChat(response.ctxids[0]);
         }
         toast("Chats loaded.", "success");
       }

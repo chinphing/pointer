@@ -10,8 +10,8 @@ const model = {
   computerScreenModelInput: "",
   /** Mouse for model-input image coords (from snapshot). */
   computerScreenModelMouse: null,
-  /** Whether the screenshot panel is visible (default true). User can collapse it. */
-  screenshotPanelVisible: true,
+  /** Whether the screenshot panel is expanded. Default collapsed on home; expanded when opening a new chat. */
+  screenshotPanelVisible: false,
   /** Interval in seconds for right-panel screenshot refresh (from settings). */
   previewIntervalSec: 5,
   /** Timer id for periodic screenshot refresh (cleared when leaving computer profile). */
@@ -103,6 +103,11 @@ const model = {
     if (!el) return;
     if (this.screenshotPanelVisible) el.classList.remove("screenshot-column-collapsed");
     else el.classList.add("screenshot-column-collapsed");
+  },
+
+  setScreenshotPanelVisible(visible) {
+    this.screenshotPanelVisible = Boolean(visible);
+    this._syncCollapsedClass();
   },
 
   toggleScreenshotPanel() {

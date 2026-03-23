@@ -74,6 +74,11 @@
   --spacing-md: 1.25rem;
   --spacing-lg: 2rem;
 
+  /* Top bar (time / projects / Live screen header / collapse control) */
+  --chat-top-bar-height: 35px;
+  --chat-top-bar-padding: 3px;
+  --chat-top-inner-height: calc(var(--chat-top-bar-height) - 2 * var(--chat-top-bar-padding));
+
   /* Font sizes */
   --font-size-xs: 0.7rem;
   --font-size-small: 0.8rem;
@@ -422,6 +427,7 @@ img {
   overflow: auto;
   -webkit-scroll-behavior: smooth;
   scroll-behavior: smooth;
+  padding-top: calc(env(safe-area-inset-top, 0px) + var(--chat-top-bar-height));
 }
 
 /* Chat area: 25% when screenshot column expanded */
@@ -451,12 +457,18 @@ img {
   transition: flex 0.2s ease;
 }
 
-/* When screenshot collapsed: column shrinks to 32px */
+/* Align with fixed chat-top bar (same height as --chat-top-bar-height) */
+#right-panel:not(.screenshot-column-collapsed) .screenshot-and-input-column {
+  padding-top: 0;
+  box-sizing: border-box;
+}
+
+/* When screenshot collapsed: strip matches top bar width */
 #right-panel.screenshot-column-collapsed .screenshot-and-input-column {
-  flex: 0 0 32px !important;
-  min-width: 32px !important;
-  max-width: 32px !important;
-  width: 32px !important;
+  flex: 0 0 var(--chat-top-bar-height) !important;
+  min-width: var(--chat-top-bar-height) !important;
+  max-width: var(--chat-top-bar-height) !important;
+  width: var(--chat-top-bar-height) !important;
 }
 
 .screenshot-panel {
@@ -485,28 +497,34 @@ img {
 
 .screenshot-panel--collapsed {
   flex: 0 0 auto;
-  min-width: 32px;
-  width: 32px;
-  max-width: 32px;
+  min-width: var(--chat-top-bar-height);
+  width: var(--chat-top-bar-height);
+  max-width: var(--chat-top-bar-height);
 }
 
 .screenshot-panel__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 8px;
+  box-sizing: border-box;
+  min-height: var(--chat-top-bar-height);
+  height: var(--chat-top-bar-height);
+  padding: var(--chat-top-bar-padding) 8px;
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 
 .screenshot-panel--collapsed .screenshot-panel__header {
   flex-direction: column;
-  padding: 6px 4px;
+  justify-content: center;
+  padding: var(--chat-top-bar-padding) 2px;
   border-bottom: none;
 }
 
 .screenshot-panel__title {
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: var(--chat-top-inner-height);
   color: var(--color-text-muted);
 }
 
@@ -515,13 +533,20 @@ img {
 }
 
 .screenshot-panel__toggle {
+  box-sizing: border-box;
+  width: var(--chat-top-inner-height);
+  min-width: var(--chat-top-inner-height);
+  height: var(--chat-top-inner-height);
+  padding: 0;
   background: transparent;
   border: none;
   color: var(--color-text-muted);
   cursor: pointer;
-  padding: 2px 6px;
-  font-size: 0.8rem;
+  font-size: 0.875rem;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .screenshot-panel__toggle:hover {
@@ -546,19 +571,66 @@ img {
   min-height: 0;
 }
 
+/* Live preview: take most vertical space; image scales down to fit entire capture */
 .screenshot-panel__section--live {
+  flex: 1 1 65%;
+  min-height: 120px;
+  overflow: hidden;
+  align-items: stretch;
+}
+
+.screenshot-panel__section--live .screenshot-panel__img-wrap {
+  container-type: size;
   flex: 1 1 auto;
-  overflow: auto;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  display: flex;
   align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.screenshot-panel__section--live .screenshot-panel__img {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  object-position: center;
 }
 
 .screenshot-panel__section--model {
-  flex: 0 1 42%;
-  max-height: 42%;
-  overflow: auto;
+  flex: 0 1 30%;
+  max-height: 30%;
+  min-height: 0;
+  overflow: hidden;
   border-top: 1px solid var(--color-border);
   padding-top: 8px;
+  align-items: stretch;
+}
+
+.screenshot-panel__section--model .screenshot-panel__img-wrap {
+  container-type: size;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: flex;
   align-items: center;
+  justify-content: center;
+}
+
+.screenshot-panel__section--model .screenshot-panel__img {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  object-position: center;
 }
 
 .screenshot-panel__section-label {
@@ -571,19 +643,15 @@ img {
 
 .screenshot-panel__img-wrap {
   position: relative;
-  display: inline-block;
   max-width: 100%;
 }
 
 .screenshot-panel__img {
-  max-width: 100%;
-  height: auto;
   display: block;
-  object-fit: contain;
 }
 
 .screenshot-panel__placeholder {
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   color: var(--color-text-muted);
   align-self: center;
   margin: auto;
@@ -622,28 +690,62 @@ div#right-panel::-webkit-scrollbar-thumb:hover {
   background-color: rgba(155, 155, 155, 0.5);
 }
 
+/* Fixed top bar: same metrics as --chat-top-bar-height / Live screen header */
 #time-date-container {
   z-index: 1000;
   position: fixed;
-  right: var(--spacing-md);
+  top: env(safe-area-inset-top, 0px);
+  right: calc(
+    env(safe-area-inset-right, 0px) + var(--chat-top-bar-height) + var(--spacing-xs)
+  );
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  margin-top: var(--spacing-md);
+  gap: var(--spacing-xs);
+  margin: 0;
+  box-sizing: border-box;
+  height: var(--chat-top-bar-height);
+  min-height: var(--chat-top-bar-height);
+  max-height: var(--chat-top-bar-height);
+  padding: var(--chat-top-bar-padding);
+}
+
+#time-date-container .status-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+#time-date-container .notification-toggle {
+  width: var(--chat-top-inner-height);
+  height: var(--chat-top-inner-height);
+  min-width: var(--chat-top-inner-height);
+  font-size: 0.875rem;
+  border-radius: 4px;
+}
+
+#time-date-container .project-dropdown-button {
+  min-height: var(--chat-top-inner-height);
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: 0.8125rem;
+  line-height: var(--chat-top-inner-height);
 }
 
 #time-date {
   color: var(--color-text);
   text-align: right;
-  line-height: 1.2;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.15;
 }
 
+#time-date #user-date,
 #user-date {
-  font-size: 0.7rem;
-  opacity: 0.5;
+  font-size: 0.65rem;
+  opacity: 0.55;
   font-weight: 400;
   display: block;
-  margin-top: 2px;
+  margin-top: 1px;
+  line-height: 1.1;
 }
 
 /* Typography */

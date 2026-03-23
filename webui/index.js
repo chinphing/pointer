@@ -119,7 +119,11 @@ export async function sendMessage() {
       if (!jsonResponse) {
         toast("No response returned.", "error");
       } else {
+        const wasWelcome = getContext() == null;
         setContext(jsonResponse.context);
+        if (wasWelcome) {
+          computerScreenStore.setScreenshotPanelVisible(true);
+        }
       }
     }
   } catch (e) {
@@ -415,8 +419,7 @@ export async function applySnapshot(snapshot, options = {}) {
           // If it doesn't exist in the list but other contexts do, fall back to the first
           const firstChatId = chatsStore.firstId();
           if (firstChatId) {
-            setContext(firstChatId);
-            chatsStore.setSelected(firstChatId);
+            chatsStore.selectChat(firstChatId);
           }
         } else if (typeof deselectChat === "function") {
           // No contexts remain – clear state so the welcome screen can surface
@@ -545,6 +548,9 @@ globalThis.newContext = newContext;
 
 export const setContext = function (id) {
   if (id == context) return;
+  if (id == null) {
+    computerScreenStore.setScreenshotPanelVisible(false);
+  }
   context = id;
   // Always reset the log tracking variables when switching contexts
   // This ensures we get fresh data from the backend
@@ -769,6 +775,18 @@ document.addEventListener("DOMContentLoaded", function () {
   progressBar = document.getElementById("progress-bar");
   autoScrollSwitch = document.getElementById("auto-scroll-switch");
   timeDate = document.getElementById("time-date-container");
+
+  // Recompute screenshot panel layout when the right panel is resized (window drag, sidebar toggle).
+  if (rightPanel && typeof ResizeObserver !== "undefined") {
+    const screenshotLayoutTick = function () {
+      rightPanel.querySelectorAll(".screenshot-panel__img-wrap").forEach((el) => {
+        void el.getBoundingClientRect();
+      });
+    };
+    new ResizeObserver(() => {
+      requestAnimationFrame(screenshotLayoutTick);
+    }).observe(rightPanel);
+  }
 
   // Pre-fetch CSRF token so WebSocket auth (e.g. /state_sync) has it before first connect.
   // Avoids "missing csrf_token in auth" when sync store connects before any other API call.

@@ -103,16 +103,7 @@ Agent Zero supports direct file attachments in the chat interface for seamless f
 ## Tool Usage
 Agent Zero's power comes from its ability to use [tools](../developer/architecture.md#tools). Here's how to leverage them effectively:
 
-- **Understand Tools:** Agent Zero includes default tools like knowledge (powered by SearXNG), code execution, and communication. Understand the capabilities of these tools and how to invoke them.
-
-### Browser Agent Status & MCP Alternatives
-The built-in browser agent currently has dependency issues on some systems. If web automation is critical, prefer MCP-based browser tools instead:
-
-- **Browser OS MCP**
-- **Chrome DevTools MCP**
-- **Playwright MCP**
-
-See [MCP Setup](mcp-setup.md) for configuration guidance and recommended servers.
+- **Understand Tools:** Agent Zero includes default tools like code execution, memory, `document_query`, and communication. Understand the capabilities of these tools and how to invoke them. For tasks that require operating a **live** browser or desktop UI, use the **computer** (ComputerUse) profile; for static files and attachments, use **`document_query`**.
 
 ### Agent-to-Agent (A2A) Communication
 
@@ -126,17 +117,16 @@ To enable A2A connectivity, go to **Settings → MCP/A2A → A0 A2A Server** and
 
 See [A2A Setup](a2a-setup.md) for detailed configuration and use cases.
 
-## Example of Tools Usage: Web Search and Code Execution
+## Example of Tools Usage: Research and Code Execution
 Let's say you want Agent Zero to perform some financial analysis tasks. Here's a possible prompt:
 
-> Please be a professional financial analyst. Find last month Bitcoin/ USD price trend and make a chart in your environment. The chart must have highlighted key points corresponding with dates of major news about cryptocurrency. Use the `search_engine` and `document_query` tools to find the price and the news, and the `code_execution_tool` to perform the rest of the job.
+> Please be a professional financial analyst. Using attached CSV/PDF exports (or MCP tools you have for market data), summarize last month's Bitcoin/USD trend and make a chart in your environment. Highlight key points against dates of major cryptocurrency news. Use `document_query` on attachments where helpful and `code_execution_tool` for the chart.
 
 Agent Zero might then:
 
-1. Use the `search_engine` and `document_query` tools to query a reliable source for the Bitcoin price and for the news about cryptocurrency as prompted.
-2. Extract the price from the search results and save the news, extracting their dates and possible impact on the price.
-3. Use the `code_execution_tool` to execute a Python script that performs the graph creation and key points highlighting, using the extracted data and the news dates as inputs.
-4. Save the final chart on disk inside the container and provide a link to it with the `response_tool`.
+1. Use `document_query` (and any configured MCP data sources) to extract price series and news references from the materials you provided.
+2. Use the `code_execution_tool` to run a Python script that builds the chart and annotations from that extracted data.
+3. Save the chart under the workdir and return a link with the `response_tool`.
 
 > [!NOTE]
 > The first run of `code_execution_tool` may take a while as it downloads and builds the Agent Zero Docker image. Subsequent runs will be faster.

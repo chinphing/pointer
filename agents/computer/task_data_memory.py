@@ -107,7 +107,7 @@ class TaskDataMemory:
     Memory system for task-related extracted data.
     - save_fragment: append one fragment (one screenshot's extraction) for a task.
     - merge_task: merge all fragments for one task via LLM and save to task_done.
-    - load_tasks: load saved content for given task IDs (for use in the middle of the flow).
+    - load_tasks: load saved content for given task IDs. Merged task_done files are read as-is; unmerged fragments are returned raw (no LLM merge).
     - load_all_tasks: load all saved tasks and cleanup; use once at the end before response.
     - write_execution_state / read_execution_state: persisted plans, progress, session learnings.
     """
@@ -200,9 +200,10 @@ class TaskDataMemory:
     async def merge_task(self, task_index: int) -> tuple[str | None, str | None]:
         """
         Merge all fragments for this task via LLM and save to task_done dir.
-        Returns (out_path, merged_content) on success, (None, None) if no fragments or merge failed.
+        Returns (None, None) only if there are no fragments or the fragment file is empty.
+        If the utility model fails or returns empty text, raw fragments are still written to task_done
+        (with an HTML comment banner) so reads never silently drop data.
         """
-        from langchain_core.messages import HumanMessage, SystemMessage
 
         extracts_path = os.path.join(_extract_dir(self.agent), f"task_{task_index}_extracts.md")
         if not os.path.isfile(extracts_path):
@@ -218,26 +219,37 @@ class TaskDataMemory:
             "Output only the merged markdown, no commentary or JSON wrapper."
         )
         user_content = f"Merge these extraction segments into one coherent markdown document:\n\n{raw_content}"
+        merged: str | None = None
         try:
             response, _ = await self.agent.call_utility_model(
                 system=system,
                 message=user_content,
                 background=True,
             )
+            if response and str(response).strip():
+                raw = str(response).strip()
+                merged = raw
+                if raw.startswith("{") and ("content" in raw or "text" in raw):
+                    try:
+                        import json
+
+                        d = json.loads(raw)
+                        merged = d.get("content") or d.get("text") or raw
+                    except Exception:
+                        pass
+                merged = str(merged).strip() or raw
         except Exception:
-            return None, None
-        if not response or not str(response).strip():
-            return None, None
-        raw = str(response).strip()
-        merged = raw
-        if raw.startswith("{") and ("content" in raw or "text" in raw):
-            try:
-                import json
-                d = json.loads(raw)
-                merged = d.get("content") or d.get("text") or raw
-            except Exception:
-                pass
-        merged = str(merged).strip() or raw
+            merged = None
+
+        if not merged:
+            # Utility merge failed or returned empty: still persist fragments so
+            # checkpoint does not leave the model with no merged file for that task.
+            merged = (
+                "<!-- Saved without LLM merge (utility model failed or empty). "
+                "Content below is raw extract_data fragments. -->\n\n"
+                + raw_content.strip()
+            )
+
         out_dir = _task_done_dir(self.agent)
         os.makedirs(out_dir, exist_ok=True)
         out_path = os.path.join(out_dir, f"task_{task_index}.md")
@@ -249,35 +261,68 @@ class TaskDataMemory:
             pass
         return out_path, merged
 
+    def _raw_fragments_for_task(self, task_index: int) -> str | None:
+        """Read extract_data fragment file for task_index; None if missing or empty."""
+        extracts_path = os.path.join(_extract_dir(self.agent), f"task_{task_index}_extracts.md")
+        if not os.path.isfile(extracts_path):
+            return None
+        try:
+            with open(extracts_path, "r", encoding="utf-8") as f:
+                raw = f.read().strip()
+        except OSError:
+            return None
+        return raw or None
+
     async def load_tasks(self, task_indices: list[int]) -> tuple[str, list[int]]:
         """
         Load saved content for the given task IDs.
-        Prefer merged file (task_done dir). If not merged but fragments exist, merge them and then return (and persist).
+        Prefer merged file (task_done dir). If only unmerged fragments exist, return them raw with a short
+        notice — no LLM merge (avoids slow utility calls on task_done:read).
         Returns (aggregated_content, list_of_missing_ids).
         """
         parts: list[str] = []
         missing: list[int] = []
         out_dir = _task_done_dir(self.agent)
-        extract_dir = _extract_dir(self.agent)
         for ti in task_indices:
             merged_path = os.path.join(out_dir, f"task_{ti}.md")
-            extracts_path = os.path.join(extract_dir, f"task_{ti}_extracts.md")
             content: str | None = None
             if os.path.isfile(merged_path):
-                with open(merged_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-            elif os.path.isfile(extracts_path):
-                _, merged = await self.merge_task(ti)
-                content = merged
+                try:
+                    with open(merged_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                except OSError:
+                    content = None
+            if content is None:
+                raw = self._raw_fragments_for_task(ti)
+                if raw is not None:
+                    content = (
+                        f"**[Task {ti} — unmerged extract_data fragments]**\n\n"
+                        "The following is the raw fragment file (no LLM merge on read). "
+                        "To produce a merged file under task_done before finishing, call **task_done:checkpoint** with this `task_index`. "
+                        "A final **task_done:read** removes merged files and these fragment files from disk.\n\n"
+                        "---\n\n"
+                        f"{raw}"
+                    )
             if content is None:
                 missing.append(ti)
                 continue
             parts.append(f"=== Task {ti} ===\n{content}")
         return "\n\n".join(parts), missing
 
+    def has_pending_task_storage(self) -> bool:
+        """True if merged task files and/or unmerged extract fragments exist for this context."""
+        out_dir = _task_done_dir(self.agent)
+        extract_dir = _extract_dir(self.agent)
+        if glob.glob(os.path.join(out_dir, "task_*.md")):
+            return True
+        if glob.glob(os.path.join(extract_dir, "task_*_extracts.md")):
+            return True
+        return False
+
     async def load_all_tasks(self, cleanup: bool | None = None) -> tuple[str, bool]:
         """
-        Load all saved tasks via load_tasks. Optionally cleanup (extract_data + task_done dirs).
+        Load all saved tasks via load_tasks. Optionally cleanup task_done, all task_*_extracts.md
+        under extract_data for this context, and execution_checkpoint.
         cleanup: if None, use agent data key LOAD_ALL_CLEANUP_KEY (default True).
         Returns (aggregated_content, success). success=False if no task data found.
         """

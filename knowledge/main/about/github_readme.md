@@ -370,7 +370,7 @@ Default models set to gpt-4.1
 - **Agent Behavior Change and Management**
 - **Text-to-Speech (TTS) and Speech-to-Text (STT)**
 - **Settings Page in Web UI**
-- **SearXNG Integration Replacing Perplexity + DuckDuckGo**
+- **SearXNG integration (upstream Agent Zero release history)**
 - **File Browser Functionality**
 - **KaTeX Math Visualization Support**
 - **In-chat File Attachments**

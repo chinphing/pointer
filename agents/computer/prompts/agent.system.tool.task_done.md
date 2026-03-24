@@ -2,7 +2,7 @@
 
 Two methods only: **`task_done:checkpoint`** (merge + persist state + truncate history) and **`task_done:read`** (load all saved task data for the final answer). Do **not** call plain `task_done` without a method.
 
-**Merges:** `extract_data:extract` only **appends** fragments. Merging runs on **`task_done:checkpoint`**, or when **`extract_data:load`** / **`task_done:read`** needs merged text (see extract_data tool). You **do not** need to checkpoint as soon as a subtask ends — fragments can sit on disk until the next checkpoint or until load/read.
+**Merges:** `extract_data:extract` only **appends** fragments. **LLM merge** runs **only** on **`task_done:checkpoint`**. **`task_done:read`** returns stored data **without** merging fragments on the fly: unmerged tasks appear as **raw** fragment text with a short notice. You **do not** need to checkpoint as soon as a subtask ends — fragments can sit on disk until the next checkpoint or until **`task_done:read`**.
 
 **History:** After a successful **`task_done:checkpoint`**, the runtime **truncates the current topic’s message list** (tool/vision noise removed). **Plans, progress, and session experience** are persisted to disk and re-injected each vision turn as **Persisted execution state** — do not assume old tool transcripts are still in context.
 
@@ -15,7 +15,7 @@ Two methods only: **`task_done:checkpoint`** (merge + persist state + truncate h
 **When:** **Only** when **Mandatory (task_done reminder)** is present (N assistant turns; Settings). Not after every subtask by default.
 
 **tool_args:**
-- `task_index` (required) — fragments for this task are merged (if any); merged file is saved for `extract_data:load` / `task_done:read`
+- `task_index` (required) — fragments for this task are merged (if any); merged file is saved for **`task_done:read`**
 - `plans` (required) — full current `<plans>` markdown (same content as in your reply when you update the plan)
 - `progress` (optional) — short progress note
 - `learnings` or `experience_delta` (optional) — short reusable tips / problem→fix (no secrets); appended to **Experience and fixes**
@@ -43,13 +43,13 @@ If there are no extract fragments, merge is skipped; still persist `plans` / opt
 
 #### task_done:read
 
-Use **only** when you need **all** saved task bodies for the final user answer. Unmerged fragments are merged when needed during read/load.
+Use **only** when you need **all** saved task bodies for the final user answer. This call does **not** run an LLM merge: unmerged tasks appear as **raw** `extract_data` fragments in the response. Disk cleanup runs afterward (merged files and fragment files for this context).
 
 **tool_args:** none
 
 The response includes aggregated task content and a **Session experience summary** (from persisted learnings). Use that to **briefly** give the user reusable tips and fixes in your final **`response`** (no secrets).
 
-**IMPORTANT:** Do not call `read` in the middle of the workflow just to “have” the data; use per-task summaries and `extract_data:load` when one earlier task is needed mid-flow.
+**IMPORTANT:** Do not call `read` in the middle of the workflow only to peek at data — it is meant for the **final** aggregation step before **`response`**.
 
 ```xml
 <response>
@@ -62,5 +62,4 @@ The response includes aggregated task content and a **Session experience summary
 **Workflow summary:**
 1. During work: `extract_data:extract` / UI tools as needed — **no** checkpoint when a subtask ends unless the **Mandatory (task_done reminder)** is already showing.
 2. When **Mandatory (task_done reminder)** appears: **`task_done:checkpoint`** with `task_index` + **`plans`** (+ optional `progress` / `learnings`); **prefer** doing it right after finishing that subtask’s read/extract when possible.
-3. Mid-flow, one task’s saved text: **`extract_data:load`** (merges fragments on demand if needed).
-4. End: **`task_done:read`** once, then **`response`**.
+3. End: **`task_done:read`** once, then **`response`**.

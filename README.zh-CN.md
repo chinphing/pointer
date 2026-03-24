@@ -94,7 +94,7 @@ pip install -r requirements.dev.txt
 2. 在 **Web UI 设置**或 `.env` 中配置对应**服务商**的密钥（见 [`conf/model_providers.yaml`](conf/model_providers.yaml)），例如：  
    - OpenAI、OpenRouter、Anthropic 等  
    - **DashScope（通义）：** `DASHSCOPE_API_KEY` 或 `API_KEY_DASHSCOPE`（provider id：`dashscope`）  
-3. **必须为 DashScope 设置 `api_base`。** LiteLLM **不会**自动区分国内与国际。在**设置**中为使用 DashScope 的每个角色填写 **API base**（**Chat**、**Utility**、**Browser** 等——如 *chat model API base*、*utility model API base*、*browser model API base*），或确保从 [`conf/model_providers.yaml`](conf/model_providers.yaml) 默认合并。请使用与密钥签发区域一致的 URL：
+3. **必须为 DashScope 设置 `api_base`。** LiteLLM **不会**自动区分国内与国际。在**设置**中为使用 DashScope 的每个角色填写 **API base**（**Chat**、**Utility** 等——如 *chat model API base*、*utility model API base*），或确保从 [`conf/model_providers.yaml`](conf/model_providers.yaml) 默认合并。请使用与密钥签发区域一致的 URL：
 
    | 区域 | `api_base` |
    |--------|------------|

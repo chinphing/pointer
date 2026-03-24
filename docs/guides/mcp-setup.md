@@ -6,10 +6,10 @@ Agent Zero can connect to external MCP (Model Context Protocol) servers to exten
 
 MCP servers are external tools that Agent Zero can use to perform specialized tasks. Popular examples include:
 
-- **Browser automation** (Chrome DevTools, Playwright)
 - **Workflow automation** (n8n)
 - **Email operations** (Gmail)
 - **Database access** (SQLite)
+- **Custom APIs** (remote MCP over HTTP)
 
 > [!NOTE]
 > This guide covers connecting to external MCP servers as a client. For exposing Agent Zero as an MCP server, see the [advanced documentation](../developer/mcp-configuration.md).
@@ -32,9 +32,9 @@ In the JSON editor, add your MCP server configuration. Here's a simple example:
 ```json
 {
   "mcpServers": {
-    "chrome-devtools": {
-      "command": "npx",
-      "args": ["-y", "chrome-devtools-mcp@latest"]
+    "sqlite": {
+      "command": "uvx",
+      "args": ["mcp-server-sqlite", "--db-path", "/root/db.sqlite"]
     }
   }
 }
@@ -46,7 +46,7 @@ In the JSON editor, add your MCP server configuration. Here's a simple example:
 
 1. Click **Apply now** to save your configuration
 2. The server status will appear below, showing:
-   - Server name (e.g., `chrome_devtools`)
+   - Server name (e.g., `sqlite`)
    - Number of available tools
    - Connection status (green indicator = connected)
 
@@ -94,8 +94,8 @@ If Agent Zero runs in Docker and your MCP server runs on the host:
 
 Once connected, MCP tools become available to Agent Zero automatically. Tools are named with the server prefix, for example:
 
-- Server name: `chrome-devtools`
-- Tool becomes: `chrome_devtools.navigate_to_url`
+- Server name: `sqlite`
+- Tool becomes: `sqlite.query` (exact names depend on the server)
 
 Simply ask Agent Zero to perform tasks, and it will use the appropriate MCP tools when needed.
 
@@ -107,11 +107,7 @@ For detailed configuration options, server types, environment variables, and tro
 
 Community-tested and reliable MCP servers:
 
-- **Chrome DevTools MCP** - Direct Chrome control
-- **Playwright MCP** - Cross-browser automation
 - **n8n MCP** - Workflow automation
 - **Gmail MCP** - Email management
 - **VSCode MCP** - IDE workflows
-
-> [!TIP]
-> For browser automation tasks, MCP-based browser tools are more reliable than the built-in browser agent.
+- **SQLite MCP** - Local database access (see examples above)

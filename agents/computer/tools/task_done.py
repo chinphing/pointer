@@ -28,7 +28,11 @@ def _saved_summary_line(task_index: int, merged_content: str, max_chars: int = 8
     brief = (merged_content or "").strip().replace("\n", " ")[:max_chars]
     if len((merged_content or "").strip()) > max_chars:
         brief = brief.rstrip() + "…"
-    return f"Task {task_index}: saved {brief or '(empty)'} data. To use it, call extract_data:load with task_index={task_index}."
+    return (
+        f"Task {task_index}: saved {brief or '(empty)'} data. "
+        "Rely on **Persisted execution state** and extract summaries in thread for mid-flow context; "
+        "use **task_done:read** at the end for full aggregation."
+    )
 
 
 def _reset_task_done_turn_counter(agent: Any) -> None:
@@ -124,7 +128,7 @@ class TaskDoneTool(Tool):
             merge_note = f"Task {task_index} extracts were merged and saved.\n**Saved data summary:**\n{_saved_summary_line(task_index, merged_content)}\n\n"
             _append_saved_task(self.agent, task_index)
             saved_list = list(self.agent.get_data(SAVED_TASK_LIST_KEY) or [])
-            list_hint = f" Saved tasks (extract_data:load): {saved_list}." if saved_list else ""
+            list_hint = f" Checkpoint-merged task indices: {saved_list}." if saved_list else ""
             merge_note += list_hint + "\n\n"
         else:
             merge_note = f"No extract fragments for task {task_index} (merge skipped).\n\n"
@@ -152,8 +156,18 @@ class TaskDoneTool(Tool):
         self.agent.set_data(SAVED_TASK_LIST_KEY, [])
         _reset_task_done_turn_counter(self.agent)
         if not success:
+            if memory.has_pending_task_storage():
+                return Response(
+                    message=(
+                        "Saved task files exist (**task_done** merges and/or **extract_data** fragments) but **nothing usable was returned** "
+                        "(for example files are empty or unreadable). "
+                        "Try **task_done:checkpoint** with the correct `task_index`, then call **task_done:read** again. "
+                        "If you have not extracted yet, use **extract_data:extract** during work; use **task_done:checkpoint** when the N-turn reminder fires."
+                    ),
+                    break_loop=False,
+                )
             return Response(
-                message="No saved task results found. Use **extract_data:extract** during work; call **task_done:checkpoint** when the N-turn reminder fires (or rely on **task_done:read** to merge remaining fragments at the end).",
+                message="No saved task results found. Use **extract_data:extract** during work; call **task_done:checkpoint** when the N-turn reminder fires; at the end use **task_done:read** to load all tasks.",
                 break_loop=False,
             )
         tail = ""

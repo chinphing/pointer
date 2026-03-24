@@ -332,13 +332,12 @@ The Settings page is the control center for selecting the Large Language Models 
 | --- | --- |
 | `chat_llm` | This is the primary LLM used for conversations and generating responses. |
 | `utility_llm` | This LLM handles internal tasks like summarizing messages, managing memory, and processing internal prompts. Using a smaller, less expensive model here can improve efficiency. |
-| `browser_llm` | This LLM powers the browser agent for simple search and plain text extraction only (no interactive operations). Vision support is recommended for better page understanding. |
 | `embedding_llm` | The embedding model shipped with A0 runs on CPU and is responsible for generating embeddings used for memory retrieval and knowledge base lookups. Changing the `embedding_llm` will re-index all of A0's memory. |
 
 **How to Change:**
 
 1. Open Settings page in the Web UI.
-2. Choose the provider for the LLM for each role (Chat model, Utility model, Browser model, Embedding model) and write the model name.
+2. Choose the provider for the LLM for each role (Chat model, Utility model, Embedding model) and write the model name.
 3. Click "Save" to apply the changes.
 
 ### Important Considerations

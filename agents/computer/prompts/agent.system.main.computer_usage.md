@@ -17,10 +17,17 @@ Use these rules for reliable, low-cost operation.
 - Validate each action from visible screen evidence. Use the **mouse cursor** (arrow) in the screenshot to check that the previous click landed at the intended position; use the **focus caret** (I-beam) to check which input has focus and that the previous type/focus action targeted the right field. For page-open/navigation steps, describe key identifiers in thoughts (title, URL keyword, main heading, app/site label) to confirm success; if unclear, retry then switch method.
 - Keep thoughts concise and action-oriented.
 
+### 1a) Web search, browsing, and online apps (vision only)
+
+- **Same toolset as the rest of the desktop:** Web tasks use only **mouse, hotkey, modified_click, composite_action, wait, extract_data, task_done, …** on the **real** UI—nothing else is available for “background” web access.
+- **Search:** Focus the browser (or app), use the **address bar / omnibox / in-page search** (see OS shortcut prompts for “address bar”, “new tab”, “find in page”). Type the query or URL with **composite_action**, submit (Enter or the visible go/search control), then **extract_data** + scroll through results.
+- **Read pages and web apps:** Same as any scrollable content: **extract_data:extract** → **scroll_at_index** / **scroll_at_current** until you have what you need; use **`task_done:checkpoint`** when the Mandatory reminder appears and **`task_done:read`** at the end per your normal workflow.
+- **Prefer the existing window** if the target site or app is already open; avoid piling up duplicate tabs unless the task requires isolation.
+
 ### 2) Planning
 
 - For multi-step tasks, produce a short numbered plan of **1–10 steps**. Each step is a **task** (e.g. one list item, one page, one screen), not a single tool call.
-- **Plan step = task_index**: Align plan step number with `task_index`: step 1 → task_index 1, step 2 → task_index 2, etc. Use the same index in `extract_data`, **`task_done:checkpoint`**, and `extract_data:load` for that step.
+- **Plan step = task_index**: Align plan step number with `task_index`: step 1 → task_index 1, step 2 → task_index 2, etc. Use the same index in **`extract_data:extract`** and **`task_done:checkpoint`** for that step.
 - **Granularity**: Prefer coarse steps. If the page/site shows clear step indicators, use those as plan items. If not: one list item = one task, or one website page / one app screen = one task. Do not use one tool call as one plan step.
 - When a task has no extract data (**task_done:checkpoint** will tell you when there was nothing to merge), note it in plans and continue; **Skipped** means the plan changed and this task was intentionally omitted.
 - **Pagination**: When all tasks on one page are done, compress that into one line (e.g. "Complete first page … tasks. Done") and continue task IDs from the first page base for the next page.
@@ -42,7 +49,7 @@ Use these rules for reliable, low-cost operation.
 3. **Next scrolls**: use **mouse:scroll_at_current** (no re-targeting).
 4. **Repeat** extract → scroll → extract → scroll until reading is complete (see "When to end scrolling" below).
 5. **Checkpoint rule (only one):** Call **`task_done:checkpoint`** **only** when the inject shows **Mandatory (task_done reminder)** (every **N** assistant turns since last checkpoint/read; **N** is in Settings, default 20). Use `task_index`, **`plans`** (required), and optional `progress` / `learnings`. **Prefer** to reach a **subtask boundary** first (e.g. right after you finish that subtask’s read/extract for the cycle); if the reminder appears mid-subtask, checkpoint **now** with the active `task_index` and current `plans`/`progress`. Finishing a subtask **does not** require an immediate checkpoint otherwise.
-6. When a **later** task needs another task’s full content: call `extract_data:load` with that task_index (load may be used in the middle). **Only at the end**, when you need **all** saved data for the final response: call `task_done:read` once, then use the result and call `response`.
+6. When a **later** task needs another task’s context: use **Persisted execution state**, recent **extract** summaries in the thread, and any prior **`task_done:checkpoint`** output in the inject. **Only at the end**, when you need **all** saved data for the final response: call **`task_done:read`** once, then use the result and call **`response`**.
 
 ### 4) When to end scrolling
 

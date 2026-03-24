@@ -118,23 +118,6 @@ Agent Zero comes with a set of built-in tools designed to help agents perform ta
 | response_tool | Allows agents to output a response |
 | memory_tool | Enables agents to save, load, delete and forget information from memory |
 
-#### SearXNG Integration
-Agent Zero has integrated SearXNG as its primary search tool, replacing the previous knowledge tools (Perplexity and DuckDuckGo). This integration enhances the agent's ability to retrieve information while ensuring user privacy and customization.
-
-- Privacy-Focused Search
-SearXNG is an open-source metasearch engine that allows users to search multiple sources without tracking their queries. This integration ensures that user data remains private and secure while accessing a wide range of information.
-
-- Enhanced Search Capabilities
-The integration provides access to various types of content, including images, videos, and news articles, allowing users to gather comprehensive information on any topic.
-
-- Fallback Mechanism
-In cases where SearXNG might not return satisfactory results, Agent Zero can be configured to fall back on other sources or methods, ensuring that users always have access to information.
-
-> [!NOTE]
-> The Knowledge Tool is designed to work seamlessly with both online searches through 
-> SearXNG and local knowledge base queries, providing a comprehensive information 
-> retrieval system.
-
 #### Custom Tools
 Users can create custom tools to extend Agent Zero's capabilities. Custom tools can be integrated into the framework by defining a tool specification, which includes the tool's prompt. Place these prompt overrides in your agent profile:
 

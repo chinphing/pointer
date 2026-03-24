@@ -40,7 +40,6 @@ class LoadProfileSettings(Extension):
                 ("agent_profile", "profile"),
                 ("agent_memory_subdir", "memory_subdir"),
                 ("mcp_servers", "mcp_servers"),
-                ("browser_http_headers", "browser_http_headers"),
             ):
                 if override_key not in settings_override:
                     setattr(new_config, config_attr, getattr(current_config, config_attr))

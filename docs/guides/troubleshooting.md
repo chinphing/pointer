@@ -26,8 +26,8 @@ Refer to the [Choosing your LLMs](../setup/installation.md#installing-and-using-
 **7. How can I make Agent Zero retain memory between sessions?**
 Use **Settings → Backup & Restore** and avoid mapping the entire `/a0` directory. See [How to update Agent Zero](../setup/installation.md#how-to-update-agent-zero).
 
-**8. My browser agent fails or is unreliable. What now?**
-The built-in browser agent is currently unstable on some systems. Use Skills or MCP alternatives such as Browser OS, Chrome DevTools, or Vercel's Agent Browser. See [MCP Setup](mcp-setup.md).
+**8. How do I automate the browser?**
+Use the **computer** (ComputerUse) profile: the agent sees your screen and operates the **real** browser or apps (address bar, search field, links, forms) with vision tools—there is no separate headless browser or built-in web-search API tool in this fork. For web-related work without that profile, attach pages or exports and use **`document_query`**, or switch the chat to the computer profile.
 
 **9. My secrets disappeared after a backup restore.**
 Secrets are stored in `/a0/usr/secrets.env` and are not always included in backup archives. Copy them manually.
@@ -36,7 +36,7 @@ Secrets are stored in `/a0/usr/secrets.env` and are not always included in backu
 - Join the Agent Zero [Skool](https://www.skool.com/agent-zero) or [Discord](https://discord.gg/B8KZKNsPpj) community.
 
 **11. How do I adjust API rate limits?**
-Use the model rate limit fields in Settings (Chat/Utility/Browser model sections) to set request/input/output limits. These map to the model config limits (for example `limit_requests`, `limit_input`, `limit_output`).
+Use the model rate limit fields in Settings (Chat/Utility model sections) to set request/input/output limits. These map to the model config limits (for example `limit_requests`, `limit_input`, `limit_output`).
 
 **12. My `code_execution_tool` doesn't work, what's wrong?**
 - Ensure Docker is installed and running.

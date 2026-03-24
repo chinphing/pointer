@@ -1,7 +1,6 @@
 """
 Extract data from the current screen for the Computer Agent.
 - extract: capture visible content, append to task temp file, return a short summary in the response.
-- load: load previously saved task data (after task_done:checkpoint) for use in later tasks; no re-extraction.
 """
 from __future__ import annotations
 
@@ -50,54 +49,7 @@ def _summary_of_content(text: str, max_chars: int = SUMMARY_MAX_CHARS_DEFAULT) -
 
 
 class ExtractDataTool(Tool):
-    """Extract visible content (extract) or load previously saved task data (load)."""
-
-    def _parse_task_indices(self, task_index_arg: Any) -> list[int]:
-        """Parse task_index as single int or list/seq of ints (e.g. [1,2,3] or '1,2,3')."""
-        if task_index_arg is None:
-            return []
-        if isinstance(task_index_arg, list):
-            out = []
-            for x in task_index_arg:
-                try:
-                    out.append(int(x))
-                except (TypeError, ValueError):
-                    continue
-            return out
-        if isinstance(task_index_arg, str) and "," in task_index_arg:
-            out = []
-            for part in task_index_arg.split(","):
-                try:
-                    out.append(int(part.strip()))
-                except (TypeError, ValueError):
-                    continue
-            return out
-        try:
-            return [int(task_index_arg)]
-        except (TypeError, ValueError):
-            return []
-
-    async def _execute_load(self, args: dict) -> Response:
-        """Load saved task data via memory system. Supports one or multiple task_index."""
-        indices = self._parse_task_indices(args.get("task_index"))
-        if not indices:
-            return Response(
-                message="extract_data:load requires 'task_index' (one number or list/comma-separated, e.g. 1 or [1,2] or '1,2').",
-                break_loop=False,
-            )
-        memory = TaskDataMemory(self.agent)
-        content, missing = await memory.load_tasks(indices)
-        if missing:
-            return Response(
-                message=f"Task(s) {missing} not found. Checkpoint those with task_done:checkpoint first. Loaded: {[i for i in indices if i not in missing]}.",
-                break_loop=False,
-            )
-        saved_list = self.agent.get_data("computer_saved_task_indices") or []
-        hint = f" (Saved tasks available for load: {saved_list})" if saved_list else ""
-        return Response(
-            message=f"[Loaded tasks {indices}]{hint}\n\n{content}",
-            break_loop=False,
-        )
+    """Extract visible content from the current screenshot and append to task storage."""
 
     async def execute(self, **kwargs: Any) -> Response:
         args = dict(self.args or {})
@@ -126,11 +78,9 @@ class ExtractDataTool(Tool):
             )
 
         method = (getattr(self, "method", None) or "").strip().lower()
-        if method == "load":
-            return await self._execute_load(args)
         if method and method != "extract":
             return Response(
-                message=f"extract_data supports 'extract' and 'load', got '{self.method}'.",
+                message=f"extract_data supports only 'extract', got '{self.method}'.",
                 break_loop=False,
             )
         if not getattr(self.agent.config.utility_model, "vision", False):
@@ -197,7 +147,7 @@ class ExtractDataTool(Tool):
                 f"Task {task_index} extract saved.\n\n"
                 f"**Saved data summary:**\n{summary}\n\n"
                 "Next: scroll if needed and extract again. Call task_done:checkpoint only when Mandatory (task_done reminder) appears (N assistant turns; Settings), not immediately when this subtask’s reading ends. "
-                "To use this data in a later task, call extract_data:load (merges fragments on demand if needed) or after a checkpoint/read produced merged files."
+                "For cross-task context, use Persisted execution state and prior extract summaries; use task_done:read at the end to aggregate all saved tasks."
             ),
             break_loop=False,
         )

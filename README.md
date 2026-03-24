@@ -48,7 +48,7 @@ Contact **starphinliu@gmail.com** for trials, demos, or partnerships.
 | **Human-like operation** | Live screenshots and UI annotation; prefer element indices, fall back to coordinates; OS-specific shortcut hints for macOS, Windows, and Linux. |
 | **Credential safety** | Dedicated login and credential handling to avoid putting plaintext passwords in model-visible prompts; guided secure fill (see Computer Agent tool specs). |
 | **CAPTCHA handling** | **captcha_verify** and related flows: when a CAPTCHA-like UI is detected, choose click / type / drag per protocol (exact behavior depends on implementation and model). |
-| **Full Agent Zero stack** | Skills, memory and learning, code execution, subordinate agents, MCP, browser tooling, and more—usable alongside Pointer as your task requires. |
+| **Full Agent Zero stack** | Skills, memory and learning, code execution, subordinate agents, MCP integrations, and more—usable alongside Pointer as your task requires. |
 | **Long-horizon tasks** | Screen extraction, merge by task index, `task_done:checkpoint` / `read`, and persisted plans / progress / learnings to bound context and improve recoverability. |
 
 For architecture, file layout, env vars, and tools, see **[agents/computer/README.md](agents/computer/README.md)**.
@@ -94,7 +94,7 @@ pip install -r requirements.dev.txt
 2. In the **Web UI settings** or `.env`, set keys for your **provider** (see [`conf/model_providers.yaml`](conf/model_providers.yaml)), e.g.:  
    - OpenAI, OpenRouter, Anthropic, etc.  
    - **DashScope (Qwen):** `DASHSCOPE_API_KEY` or `API_KEY_DASHSCOPE` (provider id: `dashscope`)  
-3. **Set `api_base` for DashScope (required).** LiteLLM does **not** auto-pick China vs international. In **Settings**, fill **API base** for each role that uses DashScope (**Chat**, **Utility**, **Browser**, etc.—field names such as *chat model API base*, *utility model API base*, *browser model API base*), or ensure the value is merged from [`conf/model_providers.yaml`](conf/model_providers.yaml) defaults. Use the URL that matches where your key was issued:
+3. **Set `api_base` for DashScope (required).** LiteLLM does **not** auto-pick China vs international. In **Settings**, fill **API base** for each role that uses DashScope (**Chat**, **Utility**, etc.—field names such as *chat model API base*, *utility model API base*), or ensure the value is merged from [`conf/model_providers.yaml`](conf/model_providers.yaml) defaults. Use the URL that matches where your key was issued:
 
    | Region | `api_base` |
    |--------|------------|

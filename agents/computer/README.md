@@ -2,21 +2,9 @@
 
 A custom Agent that operates the computer through vision: before each LLM turn it injects a screenshot and an annotated UI image; the model calls **mouse**, **hotkey**, **modified_click**, **composite_action**, and **wait** by element index to click, double-click, type, and more.
 
-## How this differs from `browser_agent`
+## Role
 
-The framework exposes two different “browser / desktop” capabilities:
-
-| Aspect | **browser_agent** | **ComputerUse (this profile)** |
-|--------|-------------------|--------------------------------|
-| **Type** | **Tool** (`tool_name`: `browser_agent`) | **Agent config** (profile: `computer`) |
-| **Role** | **Search and plain text only**: open a search engine, open a URL, extract body/links as text—**no real UI interaction** | **Interactive, complex tasks**: click, type, scroll, forms, login, multi-step flows, uploads, **real desktop** and **already visible browser** windows |
-| **How it’s selected** | Main Agent sets `tool_name: "browser_agent"` | Start or delegate with `profile=computer` |
-| **Implementation** | `python/tools/browser_agent.py`, browser-use + Playwright **headless** | `agents/computer/`: capture + annotate + mouse/hotkey/modified_click/composite_action/wait on the **physical display** (pixel-accurate) |
-| **When to use** | “Search / open page / grab text” and **no UI open yet** (new headless session) | “Click, fill, log in, multi-step” or **UI already on screen** (any visible window) |
-| **Standalone profile?** | No—tool on any profile | Yes—profile name `computer`, title ComputerUse |
-
-- **browser_agent**: not for forms, login, wizards, uploads, or interactive flows; **for complex browser work, prefer ComputerUse**.
-- **ComputerUse**: any task that needs **UI interaction** or **multi-step** work, **including heavy browser use**; use `call_subordinate` with `profile: "computer"`.
+ComputerUse drives the **real screen** (screenshots, indexed UI, mouse/hotkey/actions). **Web search, browsing, and online apps** are done the same way: operate the **visible** browser or desktop app (omnibox/address bar, search fields, tabs, links)—no headless browser, SearXNG, or Perplexity tools. Other profiles can use **`document_query`** on attachments for static documents; use **computer** when the task needs the live screen.
 
 ## Technical approach
 
@@ -24,7 +12,7 @@ The framework exposes two different “browser / desktop” capabilities:
 2. **Capture**: `screen.py` → `screenshot_current_monitor()` for the monitor under the cursor and its bbox.
 3. **Annotation**: `som_util.py` `BoxAnnotator` calls **`POST /api/v1/annotate/all`** over HTTP (RF-DETR + optional OCR, dedup/sort on the server); returns the overlay image and `boxes`. No local detector in this repo. Base URL: env **`COMPUTER_ANNOTATE_API_BASE`** (default `http://127.0.0.1:8000`).
 4. **Optional quadrant zoom**: split the annotated frame 2×2; if the user or last reply mentions a quadrant (e.g. “top left”, `top_left`), crop and 2× magnify that patch for the model.
-5. **Tools**: **mouse** (click_index, double_click_index, click_at, scroll_at_current, …), **hotkey** (`goal` + `keys`), **modified_click**, **composite_action** (type_text_at_index, type_text_at, scroll_at_index), **wait**. Prefer indices; if there is no index, use coordinates (normalized per model, converted to pixels in `coord_convert.py`). **Call priority**: minimize calls → prefer **composite_action**, then hotkey/modified_click, then **mouse**; use **wait** for delays. **Reading / data**: **`extract_data:extract`** appends fragments only; **`task_done:checkpoint`** runs only when the inject shows **Mandatory (task_done reminder)** (N assistant turns since last checkpoint/read, **N** configurable in Settings, default 20)—merge + truncate history; **best practice** is to checkpoint right after finishing the current subtask’s read/extract when near the threshold. Otherwise use **`extract_data:load`** / **`task_done:read`** to merge on demand. **execution_checkpoint** stores plans/progress/experience and is re-injected after truncation.
+5. **Tools**: **mouse** (click_index, double_click_index, click_at, scroll_at_current, …), **hotkey** (`goal` + `keys`), **modified_click**, **composite_action** (type_text_at_index, type_text_at, scroll_at_index), **wait**. Prefer indices; if there is no index, use coordinates (normalized per model, converted to pixels in `coord_convert.py`). **Call priority**: minimize calls → prefer **composite_action**, then hotkey/modified_click, then **mouse**; use **wait** for delays. **Reading / data**: **`extract_data:extract`** appends fragments only; **`task_done:checkpoint`** runs only when the inject shows **Mandatory (task_done reminder)** (N assistant turns since last checkpoint/read, **N** configurable in Settings, default 20)—merge + truncate history; **best practice** is to checkpoint right after finishing the current subtask’s read/extract when near the threshold. Use **`task_done:read`** once at the end to aggregate all tasks (raw fragments if not yet checkpoint-merged); only **`task_done:checkpoint`** runs LLM merge. **execution_checkpoint** stores plans/progress/experience and is re-injected after truncation.
 
 ## Architecture and data flow
 

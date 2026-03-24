@@ -1,6 +1,6 @@
 ### extract_data
 
-Two methods: **extract** (capture and save; response includes a short summary of what was saved) and **load** (load previously saved task data for use in a later task—no re-extraction).
+**Single operation:** **`extract_data:extract`** — capture visible content from the current screenshot, append it to the task’s temp storage (`extract_data` fragments), and return a **short saved-data summary** so you can see what was stored without re-reading the full text.
 
 **Do not use for CAPTCHA/code verification.** When the screen shows a CAPTCHA (image grid, slider, distorted text + input, "select all that contain…", etc.), use **captcha_verify** directly — do not call extract_data first to "read the CAPTCHA requirement". captcha_verify infers type and requirement from the screenshot; extract_data is for reading page/content for later use, not for preparing CAPTCHA actions.
 
@@ -14,18 +14,7 @@ Extract current visible content as markdown and append to the task’s temp stor
 - `instruction` (required) — What to extract from the screen.
 - `task_index` (required) — Which task this extract belongs to.
 
-After extract, scroll if needed and extract again. **Do not** call **`task_done:checkpoint`** just because this subtask’s reading is done — checkpoint **only** when **Mandatory (task_done reminder)** appears (N assistant turns; Settings). To use this data in a **later** task, call `extract_data:load` (merges fragments on demand if not yet checkpointed) or wait until a checkpoint/read has produced a merged file.
-
----
-
-#### extract_data:load
-
-When a **later** task needs the full content of one or more previously saved tasks (merged files and/or fragment files from **`extract_data:extract`**), call `extract_data:load` with that task_index (or list). You **may** call load in the middle of the workflow whenever a step actually needs another task’s data (e.g. task 3 needs task 1’s content → load task 1). Do not re-extract; load directly.
-
-**tool_args:**
-- `task_index` (required) — One task index, or multiple: pass a list `[1, 2, 3]` or comma-separated `"1,2,3"` to load several tasks at once. The response will include sections `=== Task N ===` for each.
-
-Prefer tasks already checkpointed with **`task_done:checkpoint`** (merged). **Fallback:** if a task has not been merged yet, load will merge its fragments first and then return the merged content (same merge as checkpoint).
+After extract, scroll if needed and extract again. **Do not** call **`task_done:checkpoint`** just because this subtask’s reading is done — checkpoint **only** when **Mandatory (task_done reminder)** appears (N assistant turns; Settings). Merged text on disk comes from **`task_done:checkpoint`**; to pull **all** saved tasks into one reply at the end, use **`task_done:read`**. For cross-task context mid-flow, rely on recent **tool summaries**, **Persisted execution state**, and prior **`task_done:checkpoint`** results in the inject/history.
 
 ---
 
@@ -33,22 +22,13 @@ Prefer tasks already checkpointed with **`task_done:checkpoint`** (merged). **Fa
 1. Extract current view → `extract_data:extract` (response shows saved summary).
 2. Scroll → extract again as needed until the read pass for that subtask is done.
 3. When **Mandatory (task_done reminder)** appears (~N assistant turns) → **`task_done:checkpoint`** with the appropriate `task_index` + **`plans`** (merge + truncate). **Ideal:** you **just finished** that subtask’s extract/read cycle; if not, checkpoint with current `plans`/`progress` anyway.
-4. When a **later** task needs another task’s full content → `extract_data:load` with that task_index (you may call load in the middle whenever a step needs it).
-5. **Only at the end**, when you need **all** saved data for the final response → `task_done:read` (then use the result and call `response`).
+4. **Only at the end**, when you need **all** saved data for the final response → `task_done:read` (then use the result and call `response`).
 
-Example (extract):
+Example:
 ```xml
 <tool_name>extract_data:extract</tool_name>
 <tool_args>
   <instruction>Extract visible article text as markdown</instruction>
   <task_index>2</task_index>
-</tool_args>
-```
-
-Example (load):
-```xml
-<tool_name>extract_data:load</tool_name>
-<tool_args>
-  <task_index>1</task_index>
 </tool_args>
 ```

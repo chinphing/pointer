@@ -308,9 +308,11 @@ For high-frequency tool usage:
 ```json
 {
   "mcpServers": {
-    "browser": {
-      "command": "npx",
-      "args": ["-y", "chrome-devtools-mcp@latest"]
+    "documents": {
+      "url": "https://docs.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer token789"
+      }
     },
     "database": {
       "command": "uvx",
@@ -353,7 +355,7 @@ For high-frequency tool usage:
 ### Tool Composition
 
 Combine multiple MCP servers for complex workflows:
-1. Browser MCP for data extraction
+1. HTTP or document MCP for ingesting external sources
 2. Database MCP for storage
 3. Workflow MCP for orchestration
 

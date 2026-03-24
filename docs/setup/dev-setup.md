@@ -11,7 +11,7 @@ This guide will show you how to setup a local development environment for Agent 
 
 > [!NOTE]
 > - Agent Zero runs in a Docker container, this simplifies installation and ensures unified environment and behavior across systems.
-> - Developing and debugging in a container would be complicated though, therefore we use a hybrid approach where the python framework runs on your machine (in VS Code for example) and only connects to a Dockerized instance when it needs to execute code or use other pre-installed functionality like the built-in search engine.
+> - Developing and debugging in a container would be complicated though, therefore we use a hybrid approach where the python framework runs on your machine (in VS Code for example) and only connects to a Dockerized instance when it needs to execute code or use other containerized services.
 
 
 ## To follow this guide you will need:
@@ -69,7 +69,7 @@ Now when you select one of the python files in the project, you should see prope
 pip install -r requirements.txt
 playwright install chromium
 ```
-These will install all the python packages and browser binaries for playwright (browser agent).
+These will install Python packages (and any optional Playwright binaries if still present in your dependency set).
 Errors in the code editor caused by missing packages should now be gone. If not, try reloading the window.
 
 

@@ -407,7 +407,7 @@ def _do_drag(
     total_time = MOVE_TOTAL_TIME_MIN + random.random() * (MOVE_TOTAL_TIME_MAX - MOVE_TOTAL_TIME_MIN)
     p0, iv0 = _CAPTCHA_MOVE_COMPOSITE.plan(to_start, total_time=total_time)
     _apply_mouse_plan(p0, iv0)
-    _mouse_jitter_near_cursor()
+    
     pyautogui.mouseDown()
     time.sleep(0.05)
     if is_slider:

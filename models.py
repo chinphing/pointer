@@ -26,7 +26,6 @@ from python.helpers.dotenv import load_dotenv
 from python.helpers.providers import ModelType as ProviderModelType, get_provider_config
 from python.helpers.rate_limiter import RateLimiter
 from python.helpers.tokens import approximate_tokens
-from python.helpers import dirty_json, browser_use_monkeypatch
 
 from langchain_core.language_models.chat_models import SimpleChatModel
 from langchain_core.outputs.chat_generation import ChatGenerationChunk
@@ -45,7 +44,7 @@ from sentence_transformers import SentenceTransformer
 from pydantic import ConfigDict
 
 
-# disable extra logging, must be done repeatedly, otherwise browser-use will turn it back on for some reason
+# disable extra logging, must be done repeatedly for stable LiteLLM noise levels
 def turn_off_logging():
     os.environ["LITELLM_LOG"] = "ERROR"  # only errors
     litellm.suppress_debug_info = True
@@ -58,9 +57,8 @@ def turn_off_logging():
 # init
 load_dotenv()
 turn_off_logging()
-browser_use_monkeypatch.apply()
 
-litellm.modify_params = True # helps fix anthropic tool calls by browser-use
+litellm.modify_params = True  # helps some providers (e.g. Anthropic) with tool-call params
 
 class ModelType(Enum):
     CHAT = "Chat"

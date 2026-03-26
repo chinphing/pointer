@@ -35,7 +35,7 @@ usr/**
 # Global rule to include .gitkeep files anywhere
 !**/.gitkeep
 
-# for browser-use
+# Optional screen-capture artifact (legacy naming)
 agent_history.gif
 
 .agent/**

@@ -64,12 +64,11 @@ Now when you select one of the python files in the project, you should see prope
 
 ![VS Code env terminal](res/dev/devinst-5.png)
 
-3. Install dependencies. Run these two commands in the terminal:
+3. Install dependencies. Run in the terminal:
 ```bash
 pip install -r requirements.txt
-playwright install chromium
 ```
-These will install Python packages (and any optional Playwright binaries if still present in your dependency set).
+This installs Python packages for the project.
 Errors in the code editor caused by missing packages should now be gone. If not, try reloading the window.
 
 

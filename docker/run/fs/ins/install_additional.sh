@@ -1,8 +1,7 @@
 #!/bin/bash
 set -e
 
-# install playwright - moved to install A0
-# bash /ins/install_playwright.sh "$@"
+# Playwright was removed from project requirements; install manually if needed for optional skills/scripts.
 
 # searxng - moved to base image
 # bash /ins/install_searxng.sh "$@"

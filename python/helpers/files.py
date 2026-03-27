@@ -559,12 +559,14 @@ def deabsolute_path(path: str):
 
 
 def fix_dev_path(path: str):
-    "On dev environment, convert /a0/... paths to local absolute paths under get_a0_root()."
+    "On dev environment, convert /a0/... paths to local absolute paths under get_a0_root(). Also handles ~ paths."
     if path.startswith("/a0/"):
         rel = path[4:].lstrip("/")
         return os.path.join(get_a0_root(), rel) if rel else get_a0_root()
     if path == "/a0" or (path.startswith("/a0") and path[3:4] in ("", "/")):
         return get_a0_root()
+    if path.startswith("~"):
+        return os.path.abspath(os.path.expanduser(path))
     if os.path.isabs(path):
         return path
     return get_abs_path(path)
@@ -588,7 +590,9 @@ def exists(*relative_paths):
 
 
 def get_base_dir():
-    # Get the base directory from the current file path
+    import sys
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        return sys._MEIPASS
     base_dir = os.path.dirname(os.path.abspath(os.path.join(__file__, "../../")))
     return base_dir
 

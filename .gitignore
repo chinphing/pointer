@@ -11,6 +11,8 @@
 
 # ignore test files in root dir
 /*.test.py
+build/
+dist/
 
 # Ignore all contents of the virtual environment directory
 .venv/

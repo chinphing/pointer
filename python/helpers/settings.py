@@ -569,7 +569,7 @@ def get_default_settings() -> Settings:
         agent_memory_subdir=get_default_value("agent_memory_subdir", "default"),
         agent_knowledge_subdir=get_default_value("agent_knowledge_subdir", "custom"),
         a0_root_path=get_default_value("a0_root_path", files.get_a0_root()),
-        workdir_path=get_default_value("workdir_path", files.get_abs_path_dockerized("usr/workdir")),
+        workdir_path=get_default_value("workdir_path", "~/pointer/usr/workdir"),
         workdir_show=get_default_value("workdir_show", True),
         workdir_max_depth=get_default_value("workdir_max_depth", 5),
         workdir_max_files=get_default_value("workdir_max_files", 20),

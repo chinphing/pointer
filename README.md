@@ -35,6 +35,7 @@ Pointer runs as an **Agent Zero profile (`computer`)**, so tool orchestration, d
 
 **Video demo:**  
 - [Verifying 21 Scenarios Across 7 CAPTCHA Categories](https://youtu.be/jliYPZphTWE)
+- [1h teaching a vision Agent to buy AliCloud: No more "CLI Everything"!](https://youtu.be/zWOtxBAZ5GQ)
 
 **Try it online / pilot access:**  
 Contact **starphinliu@gmail.com** for trials, demos, or partnerships.

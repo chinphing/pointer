@@ -14,9 +14,9 @@
 
 **Capabilities include:**
 
-- **Interactions** in web and desktop apps: click, type, scroll, multi-select, drag, and more  
-- **Multi-step flows**: login wizards, forms, file pickers, paginated reading and extraction  
-- **Vision**: numbered UI overlays plus optional zoomed regions to reduce mis-clicks  
+- **Interactions** in web and desktop apps: click, type, scroll, multi-select, drag, and more
+- **Multi-step flows**: login wizards, forms, file pickers, paginated reading and extraction
+- **Vision**: numbered UI overlays plus optional zoomed regions to reduce mis-clicks
 - **Structured memory**: per-task screen extraction, merge, `task_done:checkpoint` / `read`, and persisted execution state (see `agents/computer/` docs)
 
 Pointer runs as an **Agent Zero profile (`computer`)**, so tool orchestration, dialogue, and extensions work the same way. The product name is **Pointer**.
@@ -29,12 +29,12 @@ Pointer runs as an **Agent Zero profile (`computer`)**, so tool orchestration, d
 
 **Example use cases:**
 
-- Complex web workflows (login, search, forms, admin consoles, multi-page collection)  
-- Desktop apps and hybrid work (real windows in the foreground, coexisting with your workflow)  
-- Repetitive human–computer tasks that need **vision + reasoning + long horizons**  
+- Complex web workflows (login, search, forms, admin consoles, multi-page collection)
+- Desktop apps and hybrid work (real windows in the foreground, coexisting with your workflow)
+- Repetitive human–computer tasks that need **vision + reasoning + long horizons**
 
 **Video demo:**  
-*(TBD: link or embed)*
+- [Verifying 21 Scenarios Across 7 CAPTCHA Categories](https://youtu.be/jliYPZphTWE)
 
 **Try it online / pilot access:**  
 Contact **starphinliu@gmail.com** for trials, demos, or partnerships.
@@ -59,9 +59,9 @@ For architecture, file layout, env vars, and tools, see **[agents/computer/READM
 
 ### 4.1 Requirements
 
-- **Python:** 3.10+ recommended (match project dependencies)  
-- **OS:** **macOS**, **Windows**, and **Linux**; Pointer injects OS-specific shortcut references  
-- **Permissions:** Screen capture and accessibility / assistive APIs may be required for screenshots and input—grant them per your OS settings  
+- **Python:** 3.10+ recommended (match project dependencies)
+- **OS:** **macOS**, **Windows**, and **Linux**; Pointer injects OS-specific shortcut references
+- **Permissions:** Screen capture and accessibility / assistive APIs may be required for screenshots and input—grant them per your OS settings
 
 ### 4.2 Install dependencies
 
@@ -90,10 +90,10 @@ pip install -r requirements.dev.txt
 
 ### 4.4 API keys and models
 
-1. Copy or create an env file (e.g. `.env`) if your workflow uses one.  
-2. In the **Web UI settings** or `.env`, set keys for your **provider** (see [`conf/model_providers.yaml`](conf/model_providers.yaml)), e.g.:  
+1. Copy or create an env file (e.g. `.env`) if your workflow uses one.
+2. In the **Web UI settings** or `.env`, set keys for your **provider** (see [`conf/model_providers.yaml`](conf/model_providers.yaml)), e.g.:
    - OpenAI, OpenRouter, Anthropic, etc.  
-   - **DashScope (Qwen):** `DASHSCOPE_API_KEY` or `API_KEY_DASHSCOPE` (provider id: `dashscope`)  
+- **DashScope (Qwen):** `DASHSCOPE_API_KEY` or `API_KEY_DASHSCOPE` (provider id: `dashscope`)
 3. **Set `api_base` for DashScope (required).** LiteLLM does **not** auto-pick China vs international. In **Settings**, fill **API base** for each role that uses DashScope (**Chat**, **Utility**, etc.—field names such as *chat model API base*, *utility model API base*), or ensure the value is merged from [`conf/model_providers.yaml`](conf/model_providers.yaml) defaults. Use the URL that matches where your key was issued:
 
    | Region | `api_base` |

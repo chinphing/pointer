@@ -34,7 +34,7 @@ Pointer 以 **Agent Zero 配置（`computer`）** 运行，因此工具编排、
 - 需要**视觉 + 推理 + 长程规划**的重复人机任务  
 
 **视频演示：**  
-*（待定：链接或嵌入）*
+-  [7类21种场景验证码验证](https://bilibili.com/video/BV1S6X4BsEjN/) 
 
 **在线体验 / 试点：**  
 试用、演示或合作请联系 **starphinliu@gmail.com**。
@@ -60,8 +60,8 @@ Pointer 以 **Agent Zero 配置（`computer`）** 运行，因此工具编排、
 ### 4.1 环境要求
 
 - **Python：** 建议 3.10+（与项目依赖一致）  
-- **操作系统：** **macOS**、**Windows**、**Linux**；Pointer 会注入各系统快捷键说明  
-- **权限：** 截图与输入可能需屏幕录制、无障碍 / 辅助功能等权限——请在系统设置中按需授权  
+- **操作系统：** **macOS**、**Windows**、**Linux**；Pointer 会注入各系统快捷键说明
+- **权限：** 截图与输入可能需屏幕录制、无障碍 / 辅助功能等权限——请在系统设置中按需授权
 
 ### 4.2 安装依赖
 
@@ -91,9 +91,9 @@ pip install -r requirements.dev.txt
 ### 4.4 API 密钥与模型
 
 1. 若工作流使用环境文件，可复制或创建（如 `.env`）。  
-2. 在 **Web UI 设置**或 `.env` 中配置对应**服务商**的密钥（见 [`conf/model_providers.yaml`](conf/model_providers.yaml)），例如：  
+2. 在 **Web UI 设置**或 `.env` 中配置对应**服务商**的密钥（见 [`conf/model_providers.yaml`](conf/model_providers.yaml)），例如：
    - OpenAI、OpenRouter、Anthropic 等  
-   - **DashScope（通义）：** `DASHSCOPE_API_KEY` 或 `API_KEY_DASHSCOPE`（provider id：`dashscope`）  
+- **DashScope（通义）：** `DASHSCOPE_API_KEY` 或 `API_KEY_DASHSCOPE`（provider id：`dashscope`）
 3. **必须为 DashScope 设置 `api_base`。** LiteLLM **不会**自动区分国内与国际。在**设置**中为使用 DashScope 的每个角色填写 **API base**（**Chat**、**Utility** 等——如 *chat model API base*、*utility model API base*），或确保从 [`conf/model_providers.yaml`](conf/model_providers.yaml) 默认合并。请使用与密钥签发区域一致的 URL：
 
    | 区域 | `api_base` |

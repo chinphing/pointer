@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import platform
 import time
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import pyautogui
 import pyperclip
@@ -58,7 +58,14 @@ def _scroll_region_hash(mouse_screen_x: int, mouse_screen_y: int) -> Optional[st
 
 logger = logging.getLogger(__name__)
 
-class ActionTools:
+
+class RawAction:
+    """
+    Raw mouse and keyboard action interface.
+    Provides low-level operations WITHOUT any mouse movement.
+    Caller MUST ensure mouse is already at the correct position before calling these methods.
+    """
+
     def __init__(
         self,
         dry_run: bool = False,
@@ -79,120 +86,138 @@ class ActionTools:
         if self.stop_event and self.stop_event.is_set():
             raise RuntimeError("Stopped")
 
-    def _click(self, position: List[int]) -> str:
+    def _click(self) -> str:
+        """
+        Click at the current mouse position.
+        Caller MUST ensure mouse is already at the target position.
+        """
         self._check_stop()
         if not self.dry_run:
-            self.mouse.position = (position[0], position[1])
-            time.sleep(0.05)
             self.mouse.click(Button.left)
             time.sleep(0.1)
+        position = [int(self.mouse.position[0]), int(self.mouse.position[1])]
         self.last_action = {"tool": "click", "tool_input": {"position": position}}
-        result = f"Clicked at position [{position[0]}, {position[1]}]."
+        result = f"Clicked at current position [{position[0]}, {position[1]}]."
         logger.info(result)
         return result
 
-    def _click_add_to_selection_batch(self, positions: List[List[int]]) -> None:
-        """Hold Ctrl (or Cmd on macOS) once, click each position in order, then release. One modifier press for all clicks."""
-        if not positions:
-            return
-        import platform as _pf
-        keys = ["command"] if _pf.system() == "Darwin" else ["ctrl"]
+    def _double_click(self) -> str:
+        """
+        Double-click at the current mouse position.
+        Caller MUST ensure mouse is already at the target position.
+        """
         self._check_stop()
         if not self.dry_run:
-            for k in keys:
-                pyautogui.keyDown(k)
-            time.sleep(0.05)
-            for i, pos in enumerate(positions):
-                self._check_stop()
-                self.mouse.position = (pos[0], pos[1])
-                time.sleep(0.05)
-                self.mouse.click(Button.left)
-                time.sleep(0.08)
-            for k in reversed(keys):
-                pyautogui.keyUp(k)
-            time.sleep(0.1)
-        self.last_action = {"tool": "click_add_to_selection_batch", "tool_input": {"positions_count": len(positions)}}
-
-    def _click_range_selection(self, first_position: List[int], last_position: List[int]) -> None:
-        """Click first position, then Shift+click last position to select range from first to last."""
-        if not first_position or not last_position:
-            return
-        self._check_stop()
-        if not self.dry_run:
-            self.mouse.position = (first_position[0], first_position[1])
-            time.sleep(0.05)
-            self.mouse.click(Button.left)
-            time.sleep(0.08)
-            pyautogui.keyDown("shift")
-            time.sleep(0.05)
-            self.mouse.position = (last_position[0], last_position[1])
-            time.sleep(0.05)
-            self.mouse.click(Button.left)
-            time.sleep(0.08)
-            pyautogui.keyUp("shift")
-            time.sleep(0.1)
-        self.last_action = {"tool": "click_range_selection", "tool_input": {"first": first_position, "last": last_position}}
-
-    def _double_click(self, position: List[int]) -> str:
-        self._check_stop()
-        if not self.dry_run:
-            self.mouse.position = (position[0], position[1])
-            time.sleep(0.05)
             self.mouse.click(Button.left, 2)
             time.sleep(0.1)
+        position = [int(self.mouse.position[0]), int(self.mouse.position[1])]
         self.last_action = {"tool": "double_click", "tool_input": {"position": position}}
-        result = f"Double-clicked at position [{position[0]}, {position[1]}]."
+        result = f"Double-clicked at current position [{position[0]}, {position[1]}]."
         logger.info(result)
         return result
 
-    def _right_click(self, position: List[int]) -> str:
+    def _right_click(self) -> str:
+        """
+        Right-click at the current mouse position.
+        Caller MUST ensure mouse is already at the target position.
+        """
         self._check_stop()
         if not self.dry_run:
-            self.mouse.position = (position[0], position[1])
-            time.sleep(0.05)
             self.mouse.click(Button.right)
             time.sleep(0.1)
+        position = [int(self.mouse.position[0]), int(self.mouse.position[1])]
         self.last_action = {"tool": "right_click", "tool_input": {"position": position}}
-        result = f"Right-clicked at position [{position[0]}, {position[1]}]."
+        result = f"Right-clicked at current position [{position[0]}, {position[1]}]."
         logger.info(result)
         return result
 
-    def _type_text(
-        self,
-        text: str,
-        *,
-        clear_field_first: bool = False,
-        log_text: Optional[str] = None,
-    ) -> str:
+    def _hover(self, duration: float = 0.5) -> str:
         """
-        Paste `text` at the current cursor via clipboard (assumes field focused when no prior click in caller).
-
-        clear_field_first: select-all + backspace before pasting (replace field contents).
-        log_text: if set, use this in logs and last_action instead of `text` (secrets); default logs `text`.
+        Hover at the current mouse position for the specified duration.
+        Caller MUST ensure mouse is already at the target position.
+        
+        Args:
+            duration: How long to hover in seconds.
         """
         self._check_stop()
-        if not self.dry_run and clear_field_first:
-            mod = "command" if platform.system() == "Darwin" else "ctrl"
-            pyautogui.hotkey(mod, "a")
-            time.sleep(0.05)
-            pyautogui.press("backspace")
-            time.sleep(0.08)
-        shown = log_text if log_text is not None else text
-        old = pyperclip.paste()
-        pyperclip.copy(text)
-        time.sleep(0.1)
-        pyautogui.hotkey(*self.paste_key)
-        time.sleep(0.05)
-        pyperclip.copy(old)
-        time.sleep(0.2)
-        self.last_action = {"tool": "type_text", "tool_input": {"text": shown}}
-        result = (
-            f"Type action executed (text: '{shown}'). Please verify result on next screenshot."
-        )
+        if not self.dry_run:
+            time.sleep(duration)
+        position = [int(self.mouse.position[0]), int(self.mouse.position[1])]
+        self.last_action = {"tool": "hover", "tool_input": {"position": position, "duration": duration}}
+        result = f"Hovered at current position [{position[0]}, {position[1]}] for {duration}s."
         logger.info(result)
         return result
 
+    def _type_text(self, text: str, clear_field_first: bool = False) -> str:
+        """
+        Type text at the current cursor position.
+        Caller MUST ensure the target input field is already focused.
+        
+        Args:
+            text: The text to type.
+            clear_field_first: Whether to clear the field first (Ctrl+A).
+        """
+        self._check_stop()
+        if not self.dry_run:
+            if clear_field_first:
+                pyautogui.keyDown("ctrl")
+                pyautogui.keyDown("a")
+                pyautogui.keyUp("a")
+                pyautogui.keyUp("ctrl")
+                time.sleep(0.05)
+            pyperclip.copy(text)
+            time.sleep(0.05)
+            for key in self.paste_key:
+                pyautogui.keyDown(key)
+            for key in reversed(self.paste_key):
+                pyautogui.keyUp(key)
+            time.sleep(0.1)
+        self.last_action = {"tool": "type_text", "tool_input": {"text": text, "clear_field_first": clear_field_first}}
+        result = f"Typed text: {text}"
+        logger.info(result)
+        return result
+
+    def _scroll(self, clicks: int) -> str:
+        """
+        Scroll at the current mouse position.
+        Caller MUST ensure mouse is already at the target position.
+        
+        Args:
+            clicks: Number of clicks (positive=up, negative=down).
+        """
+        self._check_stop()
+        if not self.dry_run:
+            before_hash = _scroll_region_hash(int(self.mouse.position[0]), int(self.mouse.position[1]))
+            self.mouse.scroll(0, clicks)
+            time.sleep(0.2)
+            after_hash = _scroll_region_hash(int(self.mouse.position[0]), int(self.mouse.position[1]))
+            changed = before_hash != after_hash
+        else:
+            changed = True
+        position = [int(self.mouse.position[0]), int(self.mouse.position[1])]
+        self.last_action = {"tool": "scroll", "tool_input": {"clicks": clicks, "position": position}}
+        direction = "down" if clicks < 0 else "up"
+        result = f"Scrolled {direction} {abs(clicks)} units at current position {position}. Content changed: {changed}"
+        logger.info(result)
+        return result
+
+    def _key_down(self, key: str) -> None:
+        """Press and hold a key."""
+        if not self.dry_run:
+            pyautogui.keyDown(key)
+
+    def _key_up(self, key: str) -> None:
+        """Release a key."""
+        if not self.dry_run:
+            pyautogui.keyUp(key)
+
     def _press_keys(self, keys: List[str]) -> str:
+        """
+        Press a key combination.
+        
+        Args:
+            keys: List of keys to press simultaneously (e.g., ["ctrl", "c"]).
+        """
         self._check_stop()
         if not keys:
             raise ValueError("keys is required")
@@ -205,86 +230,21 @@ class ActionTools:
         logger.info(result)
         return result
 
-    def _scroll(self, amount: int) -> Tuple[str, Optional[bool]]:
-        """Scroll at current cursor. Returns (result_message, screen_changed or None). Compares hash of SCROLL_COMPARE_CROP_SIZE region around mouse only."""
-        self._check_stop()
-        screen_changed: Optional[bool] = None
-        if not self.dry_run and _screen_mod is not None:
-            scroll_done = False
-            try:
-                mx, my = pyautogui.position()
-                pre_hash = _scroll_region_hash(mx, my)
-                pyautogui.scroll(int(amount))
-                scroll_done = True
-                time.sleep(0.25)
-                post_hash = _scroll_region_hash(mx, my)
-                screen_changed = pre_hash != post_hash if (pre_hash is not None and post_hash is not None) else None
-            except Exception:
-                if not scroll_done:
-                    pyautogui.scroll(int(amount))
-                    time.sleep(0.2)
-        elif not self.dry_run:
-            pyautogui.scroll(int(amount))
-            time.sleep(0.2)
-        self.last_action = {"tool": "scroll", "tool_input": {"amount": amount}}
-        direction = "up" if amount > 0 else "down"
-        result = f"Trying to scroll {direction} {abs(amount)} units."
-        logger.info(result)
-        return (result, screen_changed)
-
-    def _scroll_at(self, position: List[int], amount: int) -> Tuple[str, Optional[bool]]:
-        """Move to position (hover settles), then reuse _scroll for before/scroll/after and screen_changed. Returns (result_message, screen_changed or None)."""
-        self._check_stop()
-        if not self.dry_run:
-            self.mouse.position = (position[0], position[1])
-            time.sleep(0.05)
-        _, screen_changed = self._scroll(amount)
-        self.last_action = {"tool": "scroll_at", "tool_input": {"position": position, "amount": amount}}
-        direction = "up" if amount > 0 else "down"
-        result = f"Trying to scroll {direction} {abs(amount)} units at position [{position[0]}, {position[1]}]."
-        logger.info(result)
-        return (result, screen_changed)
-
     def _wait(self, seconds: float) -> str:
+        """
+        Wait for the specified number of seconds.
+        
+        Args:
+            seconds: Number of seconds to wait.
+        """
         self._check_stop()
-        time.sleep(float(seconds))
+        if not self.dry_run:
+            time.sleep(seconds)
         self.last_action = {"tool": "wait", "tool_input": {"seconds": seconds}}
-        result = f"Waited {seconds} seconds."
+        result = f"Waited for {seconds} seconds."
         logger.info(result)
         return result
 
-    def _hover(self, position: List[int]) -> str:
-        self._check_stop()
-        if not self.dry_run:
-            self.mouse.position = (position[0], position[1])
-            time.sleep(0.2)
-        self.last_action = {"tool": "hover", "tool_input": {"position": position}}
-        result = f"Moved mouse to position [{position[0]}, {position[1]}]."
-        logger.info(result)
-        return result
 
-    def _drag(self, from_position: List[int], to_position: List[int]) -> str:
-        self._check_stop()
-        if not self.dry_run:
-            pyautogui.moveTo(from_position[0], from_position[1])
-            time.sleep(0.1)
-            pyautogui.mouseDown()
-            time.sleep(0.05)
-            pyautogui.moveTo(to_position[0], to_position[1], duration=0.2)
-            time.sleep(0.05)
-            pyautogui.mouseUp()
-            time.sleep(0.2)
-        self.last_action = {
-            "tool": "drag",
-            "tool_input": {"from_position": from_position, "to_position": to_position},
-        }
-        result = f"Dragged from [{from_position[0]}, {from_position[1]}] to [{to_position[0]}, {to_position[1]}]."
-        logger.info(result)
-        return result
-
-    def _done(self) -> str:
-        self._check_stop()
-        self.last_action = {"tool": "done", "tool_input": {}}
-        result = "Task completed successfully. Goal achieved."
-        logger.info(result)
-        return result
+# Backward compatibility alias
+ActionTools = RawAction

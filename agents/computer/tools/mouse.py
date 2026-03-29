@@ -5,7 +5,6 @@ Uses index_map or normalized coordinates; no delta_x/delta_y/target_in_bbox.
 from __future__ import annotations
 
 import os
-import platform
 import sys
 from typing import Any, Dict
 
@@ -16,9 +15,25 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _COMPUTER_DIR = os.path.abspath(os.path.join(_THIS_DIR, ".."))
 if _COMPUTER_DIR not in sys.path:
     sys.path.insert(0, _COMPUTER_DIR)
-from actions import ActionTools  # noqa: E402
+from mouse_move import MouseHelper  # noqa: E402
 
 from tools import vision_common as vc  # noqa: E402
+
+
+def _get_human_like_default() -> bool:
+    """Get default human_like setting from config."""
+    try:
+        from python.helpers import settings as settings_mod
+        return bool(settings_mod.get_settings().get("computer_human_like", False))
+    except Exception:
+        return False
+
+
+def _get_human_like(args: Dict[str, Any]) -> bool:
+    """Get human_like value from args or config default."""
+    if "human_like" in args:
+        return bool(args["human_like"])
+    return _get_human_like_default()
 
 
 def _action_done(goal: str, args: Dict[str, Any], extra: str = "") -> Response:
@@ -41,10 +56,6 @@ class MouseTool(Tool):
         )
         await super().after_execution(response, **kwargs)
 
-    def _get_actions(self) -> ActionTools:
-        paste_key = ["command", "v"] if platform.system() == "Darwin" else ["ctrl", "v"]
-        return ActionTools(dry_run=False, paste_key=paste_key)
-
     async def execute(self, **kwargs: Any) -> Response:
         args = dict(self.args or {})
         for k, v in kwargs.items():
@@ -56,93 +67,100 @@ class MouseTool(Tool):
         method = (self.method or "").strip()
         if not method:
             return Response(message="Missing method (e.g. click_index, click_at).", break_loop=False)
-        actions = self._get_actions()
         handler = _HANDLERS.get(method)
         if handler is None:
             return Response(
                 message=f"Unknown method: {method}. Use: click_index, double_click_index, right_click_index, hover_index, click_at, double_click_at, right_click_at, hover_at, scroll_at_current.",
                 break_loop=False,
             )
-        return handler(self, args, actions, goal)
+        return handler(self, args, goal)
 
 
-def _do_click_index(tool: MouseTool, args: Dict[str, Any], actions: ActionTools, goal: str) -> Response:
+def _do_click_index(tool: MouseTool, args: Dict[str, Any], goal: str) -> Response:
     index_map, err = vc.get_index_map(tool.agent)
     if err is not None:
         return err
     pos, err = vc.get_single_index_pos(tool.agent, args, index_map)
     if err is not None:
         return err
-    actions._click(pos)
+    human_like = _get_human_like(args)
+    MouseHelper.click_at(pos, human_like=human_like)
     return _action_done(goal, args)
 
 
-def _do_double_click_index(tool: MouseTool, args: Dict[str, Any], actions: ActionTools, goal: str) -> Response:
+def _do_double_click_index(tool: MouseTool, args: Dict[str, Any], goal: str) -> Response:
     index_map, err = vc.get_index_map(tool.agent)
     if err is not None:
         return err
     pos, err = vc.get_single_index_pos(tool.agent, args, index_map)
     if err is not None:
         return err
-    actions._double_click(pos)
+    human_like = _get_human_like(args)
+    MouseHelper.double_click_at(pos, human_like=human_like)
     return _action_done(goal, args)
 
 
-def _do_right_click_index(tool: MouseTool, args: Dict[str, Any], actions: ActionTools, goal: str) -> Response:
+def _do_right_click_index(tool: MouseTool, args: Dict[str, Any], goal: str) -> Response:
     index_map, err = vc.get_index_map(tool.agent)
     if err is not None:
         return err
     pos, err = vc.get_single_index_pos(tool.agent, args, index_map)
     if err is not None:
         return err
-    actions._right_click(pos)
+    human_like = _get_human_like(args)
+    MouseHelper.right_click_at(pos, human_like=human_like)
     return _action_done(goal, args)
 
 
-def _do_hover_index(tool: MouseTool, args: Dict[str, Any], actions: ActionTools, goal: str) -> Response:
+def _do_hover_index(tool: MouseTool, args: Dict[str, Any], goal: str) -> Response:
     index_map, err = vc.get_index_map(tool.agent)
     if err is not None:
         return err
     pos, err = vc.get_single_index_pos(tool.agent, args, index_map)
     if err is not None:
         return err
-    actions._hover(pos)
+    human_like = _get_human_like(args)
+    MouseHelper.hover_at(pos, human_like=human_like)
     return _action_done(goal, args)
 
 
-def _do_click_at(tool: MouseTool, args: Dict[str, Any], actions: ActionTools, goal: str) -> Response:
+def _do_click_at(tool: MouseTool, args: Dict[str, Any], goal: str) -> Response:
     pos, err = vc.get_coord_pos(tool.agent, args)
     if err is not None:
         return err
-    actions._click(pos)
+    human_like = _get_human_like(args)
+    MouseHelper.click_at(pos, human_like=human_like)
     return _action_done(goal, args)
 
 
-def _do_double_click_at(tool: MouseTool, args: Dict[str, Any], actions: ActionTools, goal: str) -> Response:
+def _do_double_click_at(tool: MouseTool, args: Dict[str, Any], goal: str) -> Response:
     pos, err = vc.get_coord_pos(tool.agent, args)
     if err is not None:
         return err
-    actions._double_click(pos)
+    human_like = _get_human_like(args)
+    MouseHelper.double_click_at(pos, human_like=human_like)
     return _action_done(goal, args)
 
 
-def _do_right_click_at(tool: MouseTool, args: Dict[str, Any], actions: ActionTools, goal: str) -> Response:
+def _do_right_click_at(tool: MouseTool, args: Dict[str, Any], goal: str) -> Response:
     pos, err = vc.get_coord_pos(tool.agent, args)
     if err is not None:
         return err
-    actions._right_click(pos)
+    human_like = _get_human_like(args)
+    MouseHelper.right_click_at(pos, human_like=human_like)
     return _action_done(goal, args)
 
 
-def _do_hover_at(tool: MouseTool, args: Dict[str, Any], actions: ActionTools, goal: str) -> Response:
+def _do_hover_at(tool: MouseTool, args: Dict[str, Any], goal: str) -> Response:
     pos, err = vc.get_coord_pos(tool.agent, args)
     if err is not None:
         return err
-    actions._hover(pos)
+    human_like = _get_human_like(args)
+    MouseHelper.hover_at(pos, human_like=human_like)
     return _action_done(goal, args)
 
 
-def _do_scroll_at_current(tool: MouseTool, args: Dict[str, Any], actions: ActionTools, goal: str) -> Response:
+def _do_scroll_at_current(tool: MouseTool, args: Dict[str, Any], goal: str) -> Response:
     amount_arg = args.get("amount")
     if amount_arg is None:
         return Response(message="Missing 'amount' in tool_args (positive=up, negative=down).", break_loop=False)
@@ -153,6 +171,9 @@ def _do_scroll_at_current(tool: MouseTool, args: Dict[str, Any], actions: Action
     if amount == 0:
         return Response(message="Amount cannot be 0.", break_loop=False)
     amount = vc.clamp_scroll_amount(amount)
+    # Scroll at current position using MouseHelper's scroll via RawAction
+    from actions import RawAction
+    actions = RawAction(dry_run=False)
     try:
         result_msg, screen_changed = actions._scroll(amount)
     except Exception as e:

@@ -408,3 +408,212 @@ class MouseMove:
                 path_jitter_max_px=options.path_jitter_max_px,
             )
             self.move_to_point(point, options=segment_options, move_to_func=move_to_func)
+
+
+class MouseHelper:
+    """
+    Helper class for common mouse operations.
+    Provides human-like movement and click operations.
+    All methods that move the mouse support human-like movement.
+    """
+
+    # Default MouseMove instance for human-like movement
+    _default_mouse_move: Optional[MouseMove] = None
+
+    @classmethod
+    def get_default_mouse_move(cls) -> MouseMove:
+        """Get or create default MouseMove instance."""
+        if cls._default_mouse_move is None:
+            cls._default_mouse_move = MouseMove()
+        return cls._default_mouse_move
+
+    @classmethod
+    def move_to_position(
+        cls,
+        position: List[int],
+        human_like: bool = False,
+        duration: float = 0.5,
+    ) -> None:
+        """
+        Move mouse to position, optionally with human-like movement.
+
+        Args:
+            position: [x, y] coordinates.
+            human_like: Whether to use human-like movement.
+            duration: Duration for human-like movement (seconds).
+        """
+        if human_like:
+            options = MoveOptions(
+                duration_mode=MoveOptions.DURATION_MODE_TOTAL,
+                duration=duration,
+                pre_jitter=True,
+                pre_jitter_steps=2,
+                path_jitter=True,
+            )
+            cls.get_default_mouse_move().move_to_point(position, options=options)
+        else:
+            import pyautogui
+            pyautogui.moveTo(position[0], position[1], duration=0.05)
+
+    @classmethod
+    def click_at(
+        cls,
+        position: List[int],
+        human_like: bool = False,
+        duration: float = 0.5,
+    ) -> None:
+        """
+        Move to position and click.
+
+        Args:
+            position: [x, y] coordinates.
+            human_like: Whether to use human-like movement.
+            duration: Duration for human-like movement (seconds).
+        """
+        from pynput.mouse import Button, Controller
+
+        cls.move_to_position(position, human_like=human_like, duration=duration)
+        mouse = Controller()
+        mouse.click(Button.left)
+        time.sleep(0.1)
+
+    @classmethod
+    def double_click_at(
+        cls,
+        position: List[int],
+        human_like: bool = False,
+        duration: float = 0.5,
+    ) -> None:
+        """
+        Move to position and double-click.
+
+        Args:
+            position: [x, y] coordinates.
+            human_like: Whether to use human-like movement.
+            duration: Duration for human-like movement (seconds).
+        """
+        from pynput.mouse import Button, Controller
+
+        cls.move_to_position(position, human_like=human_like, duration=duration)
+        mouse = Controller()
+        mouse.click(Button.left, 2)
+        time.sleep(0.1)
+
+    @classmethod
+    def right_click_at(
+        cls,
+        position: List[int],
+        human_like: bool = False,
+        duration: float = 0.5,
+    ) -> None:
+        """
+        Move to position and right-click.
+
+        Args:
+            position: [x, y] coordinates.
+            human_like: Whether to use human-like movement.
+            duration: Duration for human-like movement (seconds).
+        """
+        from pynput.mouse import Button, Controller
+
+        cls.move_to_position(position, human_like=human_like, duration=duration)
+        mouse = Controller()
+        mouse.click(Button.right)
+        time.sleep(0.1)
+
+    @classmethod
+    def hover_at(
+        cls,
+        position: List[int],
+        human_like: bool = False,
+        duration: float = 0.5,
+        hover_duration: float = 0.5,
+    ) -> None:
+        """
+        Move to position and hover.
+
+        Args:
+            position: [x, y] coordinates.
+            human_like: Whether to use human-like movement.
+            duration: Duration for human-like movement (seconds).
+            hover_duration: How long to hover (seconds).
+        """
+        cls.move_to_position(position, human_like=human_like, duration=duration)
+        time.sleep(hover_duration)
+
+    @classmethod
+    def click_add_to_selection_batch(
+        cls,
+        positions: List[List[int]],
+        human_like: bool = False,
+        duration: float = 0.3,
+    ) -> None:
+        """
+        Hold Ctrl (or Cmd on macOS) and click each position for multi-select.
+
+        Args:
+            positions: List of [x, y] coordinates.
+            human_like: Whether to use human-like movement between positions.
+            duration: Duration for human-like movement (seconds).
+        """
+        import platform as _pf
+        from pynput.mouse import Button, Controller
+        import pyautogui
+
+        if not positions:
+            return
+
+        keys = ["command"] if _pf.system() == "Darwin" else ["ctrl"]
+        mouse = Controller()
+
+        for k in keys:
+            pyautogui.keyDown(k)
+        time.sleep(0.05)
+
+        for i, pos in enumerate(positions):
+            cls.move_to_position(pos, human_like=human_like, duration=duration)
+            mouse.click(Button.left)
+            time.sleep(0.08)
+
+        for k in reversed(keys):
+            pyautogui.keyUp(k)
+        time.sleep(0.1)
+
+    @classmethod
+    def click_range_selection(
+        cls,
+        first_position: List[int],
+        last_position: List[int],
+        human_like: bool = False,
+        duration: float = 0.5,
+    ) -> None:
+        """
+        Click first position, then Shift+click last position for range selection.
+
+        Args:
+            first_position: [x, y] coordinates of first position.
+            last_position: [x, y] coordinates of last position.
+            human_like: Whether to use human-like movement.
+            duration: Duration for human-like movement (seconds).
+        """
+        from pynput.mouse import Button, Controller
+        import pyautogui
+
+        if not first_position or not last_position:
+            return
+
+        mouse = Controller()
+
+        # Click first position
+        cls.move_to_position(first_position, human_like=human_like, duration=duration)
+        mouse.click(Button.left)
+        time.sleep(0.08)
+
+        # Shift+click last position
+        pyautogui.keyDown("shift")
+        time.sleep(0.05)
+        cls.move_to_position(last_position, human_like=human_like, duration=duration)
+        mouse.click(Button.left)
+        time.sleep(0.08)
+        pyautogui.keyUp("shift")
+        time.sleep(0.1)

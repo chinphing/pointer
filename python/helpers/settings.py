@@ -166,6 +166,8 @@ class Settings(TypedDict):
     computer_task_done_reminder_after_turns: int
     # Computer agent: account_login tool — JSON path for profiles (empty = usr/computer_credentials.json)
     computer_credentials_path: str
+    # Computer agent: use human-like mouse movement (default False)
+    computer_human_like: bool
 
 
 class PartialSettings(Settings, total=False):
@@ -612,6 +614,7 @@ def get_default_settings() -> Settings:
             "computer_task_done_reminder_after_turns", 20
         ),
         computer_credentials_path=get_default_value("computer_credentials_path", ""),
+        computer_human_like=get_default_value("computer_human_like", False),
     )
 
 

@@ -16,7 +16,7 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _COMPUTER_DIR = os.path.abspath(os.path.join(_THIS_DIR, ".."))
 if _COMPUTER_DIR not in sys.path:
     sys.path.insert(0, _COMPUTER_DIR)
-from actions import ActionTools  # noqa: E402
+from actions import RawAction  # noqa: E402
 
 from tools import vision_common as vc  # noqa: E402
 
@@ -34,9 +34,9 @@ class HotkeyTool(Tool):
         )
         await super().after_execution(response, **kwargs)
 
-    def _get_actions(self) -> ActionTools:
+    def _get_actions(self) -> RawAction:
         paste_key = ["command", "v"] if platform.system() == "Darwin" else ["ctrl", "v"]
-        return ActionTools(dry_run=False, paste_key=paste_key)
+        return RawAction(dry_run=False, paste_key=paste_key)
 
     async def execute(self, **kwargs: Any) -> Response:
         args = dict(self.args or {})

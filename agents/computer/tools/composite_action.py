@@ -5,7 +5,6 @@ One-call combos (click+type or move+scroll) — prefer over multiple tool calls.
 from __future__ import annotations
 
 import os
-import platform
 import sys
 from typing import Any, Dict
 
@@ -16,9 +15,26 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _COMPUTER_DIR = os.path.abspath(os.path.join(_THIS_DIR, ".."))
 if _COMPUTER_DIR not in sys.path:
     sys.path.insert(0, _COMPUTER_DIR)
-from actions import ActionTools  # noqa: E402
+from mouse_move import MouseHelper  # noqa: E402
+from actions import RawAction  # noqa: E402
 
 from tools import vision_common as vc  # noqa: E402
+
+
+def _get_human_like_default() -> bool:
+    """Get default human_like setting from config."""
+    try:
+        from python.helpers import settings as settings_mod
+        return bool(settings_mod.get_settings().get("computer_human_like", False))
+    except Exception:
+        return False
+
+
+def _get_human_like(args: Dict[str, Any]) -> bool:
+    """Get human_like value from args or config default."""
+    if "human_like" in args:
+        return bool(args["human_like"])
+    return _get_human_like_default()
 
 
 def _action_done(goal: str, args: Dict[str, Any], extra: str = "") -> Response:
@@ -53,10 +69,6 @@ class CompositeActionTool(Tool):
         )
         await super().after_execution(response, **kwargs)
 
-    def _get_actions(self) -> ActionTools:
-        paste_key = ["command", "v"] if platform.system() == "Darwin" else ["ctrl", "v"]
-        return ActionTools(dry_run=False, paste_key=paste_key)
-
     async def execute(self, **kwargs: Any) -> Response:
         args = dict(self.args or {})
         for k, v in kwargs.items():
@@ -66,17 +78,16 @@ class CompositeActionTool(Tool):
         if not goal:
             return Response(message="Missing required 'goal' in tool_args.", break_loop=False)
         method = (self.method or "").strip()
-        actions = self._get_actions()
         handler = _HANDLERS.get(method)
         if handler is None:
             return Response(
                 message="Use method: type_text_at_index, type_text_at, type_text_at_focused_input, or scroll_at_index.",
                 break_loop=False,
             )
-        return handler(self, args, actions, goal)
+        return handler(self, args, goal)
 
 
-def _do_type_text_at_index(tool: CompositeActionTool, args: Dict[str, Any], actions: ActionTools, goal: str) -> Response:
+def _do_type_text_at_index(tool: CompositeActionTool, args: Dict[str, Any], goal: str) -> Response:
     index_map, err = vc.get_index_map(tool.agent)
     if err is not None:
         return err
@@ -91,24 +102,36 @@ def _do_type_text_at_index(tool: CompositeActionTool, args: Dict[str, Any], acti
         if isinstance(args.get("clear_first"), bool)
         else str(args.get("clear_first", "")).lower() in ("true", "1", "yes")
     )
-    actions._click(pos)
+    human_like = _get_human_like(args)
+    
+    # Move to position and click
+    MouseHelper.click_at(pos, human_like=human_like)
+    
+    # Type text
+    actions = RawAction(dry_run=False)
     actions._type_text(str(text), clear_field_first=clear_first)
     return _type_action_done(goal, "into field at annotated index (composite_action).")
 
 
-def _do_type_text_at(tool: CompositeActionTool, args: Dict[str, Any], actions: ActionTools, goal: str) -> Response:
+def _do_type_text_at(tool: CompositeActionTool, args: Dict[str, Any], goal: str) -> Response:
     pos, err = vc.get_coord_pos(tool.agent, args)
     if err is not None:
         return err
     text = args.get("text", "")
     if not text:
         return Response(message="Missing 'text' in tool_args for type_text_at.", break_loop=False)
-    actions._click(pos)
+    human_like = _get_human_like(args)
+    
+    # Move to position and click
+    MouseHelper.click_at(pos, human_like=human_like)
+    
+    # Type text
+    actions = RawAction(dry_run=False)
     actions._type_text(str(text))
     return _type_action_done(goal, "normalized coordinates, composite_action")
 
 
-def _do_type_text_at_focused_input(tool: CompositeActionTool, args: Dict[str, Any], actions: ActionTools, goal: str) -> Response:
+def _do_type_text_at_focused_input(tool: CompositeActionTool, args: Dict[str, Any], goal: str) -> Response:
     """Type into the currently focused input (no click). Use when an input already has focus."""
     text = args.get("text", "")
     if not text:
@@ -118,11 +141,12 @@ def _do_type_text_at_focused_input(tool: CompositeActionTool, args: Dict[str, An
         if isinstance(args.get("clear_existing"), bool)
         else str(args.get("clear_existing", "")).lower() in ("true", "1", "yes")
     )
+    actions = RawAction(dry_run=False)
     actions._type_text(str(text), clear_field_first=clear_existing)
     return _type_action_done(goal, "currently focused input, composite_action")
 
 
-def _do_scroll_at_index(tool: CompositeActionTool, args: Dict[str, Any], actions: ActionTools, goal: str) -> Response:
+def _do_scroll_at_index(tool: CompositeActionTool, args: Dict[str, Any], goal: str) -> Response:
     index_map, err = vc.get_index_map(tool.agent)
     if err is not None:
         return err
@@ -139,8 +163,15 @@ def _do_scroll_at_index(tool: CompositeActionTool, args: Dict[str, Any], actions
     if amount == 0:
         return Response(message="Amount cannot be 0.", break_loop=False)
     amount = vc.clamp_scroll_amount(amount)
+    
+    # Move to position
+    human_like = _get_human_like(args)
+    MouseHelper.move_to_position(pos, human_like=human_like)
+    
+    # Scroll
+    actions = RawAction(dry_run=False)
     try:
-        result_msg, screen_changed = actions._scroll_at(pos, amount)
+        result_msg, screen_changed = actions._scroll(amount)
     except Exception as e:
         return Response(message=str(e), break_loop=False)
     scroll_effect = ""

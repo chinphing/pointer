@@ -24,11 +24,12 @@ if _COMPUTER_DIR not in sys.path:
     sys.path.insert(0, _COMPUTER_DIR)
 
 import screen as screen_mod  # noqa: E402
-from actions import ActionTools  # noqa: E402
+from actions import RawAction  # noqa: E402
 import dati_client  # noqa: E402
 from mouse_move import (
     MouseMove,
     MoveOptions,
+    MouseHelper,
 )  # noqa: E402
 
 from tools import vision_common as vc  # noqa: E402
@@ -289,9 +290,12 @@ def _do_type(
         return err
     pos = vc.resolve_index(index_map, index_input_area)
     _captcha_log(tool.agent, "Human-like input")
-    actions = ActionTools(dry_run=False, paste_key=["command", "v"] if platform.system() == "Darwin" else ["ctrl", "v"])
-    actions._click(pos)
-    time.sleep(0.1)
+    
+    # Move to position and click
+    MouseHelper.click_at(pos, human_like=True)
+    
+    # Type answer
+    actions = RawAction(dry_run=False)
     actions._type_text(answer, clear_field_first=True)
     _captcha_log(tool.agent, "Done")
     return Response(
@@ -325,7 +329,7 @@ def _do_click(
     if err is not None:
         return err
     _captcha_log(tool.agent, "Human-like moves")
-    actions = ActionTools(dry_run=False, paste_key=["command", "v"] if platform.system() == "Darwin" else ["ctrl", "v"])
+    actions = RawAction(dry_run=False)
     for i, target in enumerate(screen_points):
         # Random pause before each move (human-like pacing)
         pre_delay = PRE_MOVE_DELAY_MIN + random.random() * (PRE_MOVE_DELAY_MAX - PRE_MOVE_DELAY_MIN)
@@ -345,8 +349,8 @@ def _do_click(
             path_jitter_max_px=PATH_JITTER_PX,
         )
         _CAPTCHA_MOUSE_MOVE.move_to_point(target, options=options)
-        # Click is handled externally
-        actions._click(target)
+        # Mouse already at position, click at current location
+        actions._click()
     _captcha_log(tool.agent, "Done")
     return Response(
         message=f"Goal: {goal}. Clicked {len(screen_points)} point(s). Verify on next screenshot.",

@@ -13,6 +13,8 @@ import time
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 
+import pyautogui
+
 from agent import Agent, LoopData
 from python.helpers.tool import Tool, Response
 
@@ -24,8 +26,10 @@ if _COMPUTER_DIR not in sys.path:
 import screen as screen_mod  # noqa: E402
 from actions import ActionTools  # noqa: E402
 import dati_client  # noqa: E402
-import mouse_path  # noqa: E402
-from mouse_move import CompositeMove, SimpleMove  # noqa: E402
+from mouse_move import (
+    MouseMove,
+    MoveOptions,
+)  # noqa: E402
 
 from tools import vision_common as vc  # noqa: E402
 
@@ -55,49 +59,13 @@ INTERVAL_PERTURB_FACTOR = 0.2
 CLICK_DELAY_MIN, CLICK_DELAY_MAX = 1.0, 5.0
 QUERY_TIMEOUT = 60.0
 
-# Click / non-jitter segments: easing + interval noise, no path jitter (CompositeMove path_jitter_max_px=0)
-_CAPTCHA_MOVE_COMPOSITE = CompositeMove(
-    path_jitter_max_px=0.0,
-    default_interval=MOVE_INTERVAL,
-    interval_perturb_factor=INTERVAL_PERTURB_FACTOR,
+# Mouse movement interface - encapsulates path generation and movement
+_CAPTCHA_MOUSE_MOVE = MouseMove(
+    spline_num_points=BEZIER_POINTS,
+    spline_curvature=MOUSE_PATH_CURVATURE,
+    spline_bend_sign=MOUSE_PATH_BEND_SIGN,
+    spline_control_jitter_px=MOUSE_PATH_CONTROL_JITTER_PX,
 )
-# Slider main path: Bezier + normal jitter + same interval policy
-_CAPTCHA_MOVE_SLIDER = CompositeMove(
-    path_jitter_max_px=PATH_JITTER_PX,
-    default_interval=MOVE_INTERVAL,
-    interval_perturb_factor=INTERVAL_PERTURB_FACTOR,
-)
-_CAPTCHA_MOVE_SIMPLE = SimpleMove(
-    default_interval=DRAG_MOVE_INTERVAL,
-    curvature=MOUSE_PATH_CURVATURE,
-    bend_sign=MOUSE_PATH_BEND_SIGN,
-    control_jitter_px=MOUSE_PATH_CONTROL_JITTER_PX,
-)
-
-
-def _apply_mouse_plan(path: List[Tuple[float, float]], intervals: List[float]) -> None:
-    """Execute pointer moves from mouse_move path + intervals (decoupled from path generation)."""
-    import pyautogui
-
-    for (x, y), dt in zip(path, intervals):
-        pyautogui.moveTo(int(round(x)), int(round(y)))
-        time.sleep(dt)
-
-
-def _mouse_jitter_near_cursor(jitter_radius_px: int = PRE_REAL_MOVE_JITTER_RADIUS_PX) -> None:
-    """Move to random points within ±jitter_radius_px of cursor (no eased path)."""
-    import pyautogui
-
-    w, h = pyautogui.size()
-    ox, oy = (int(pyautogui.position()[0]), int(pyautogui.position()[1]))
-    r = jitter_radius_px
-    for _ in range(PRE_REAL_MOVE_JITTER_STEPS):
-        nx = ox + random.randint(-r, r)
-        ny = oy + random.randint(-r, r)
-        nx = max(0, min(w - 1, nx))
-        ny = max(0, min(h - 1, ny))
-        pyautogui.moveTo(nx, ny)
-        time.sleep(random.uniform(PRE_REAL_MOVE_JITTER_SLEEP_MIN, PRE_REAL_MOVE_JITTER_SLEEP_MAX))
 
 
 def _captcha_log(agent: Any, message: str) -> None:
@@ -246,6 +214,56 @@ def _relative_to_screen(
     return [[left + rx, top + ry] for rx, ry in relative_points]
 
 
+def _extract_and_solve_captcha(
+    agent: Any,
+    index_captcha_area: int,
+    remark: str = "",
+) -> Tuple[Optional[str], Optional[Response]]:
+    """
+    Extract CAPTCHA image and send for solving.
+
+    Args:
+        agent: The agent instance.
+        index_captcha_area: Index of the CAPTCHA area.
+        remark: Optional remark for the CAPTCHA.
+
+    Returns:
+        Tuple of (answer, error_response). If error occurs, answer is None.
+    """
+    b64, err = _crop_captcha_and_encode(agent, index_captcha_area)
+    if err is not None:
+        return None, err
+    _captcha_log(agent, "CAPTCHA recognizing…")
+    answer, err = _upload_and_query(agent, b64, remark)
+    if err is not None:
+        return None, err
+    _captcha_log(agent, "CAPTCHA solved")
+    return answer, None
+
+
+def _get_screen_points(
+    agent: Any,
+    index_captcha_area: int,
+    rel: List[Tuple[int, int]],
+) -> Tuple[Optional[List[List[int]]], Optional[Response]]:
+    """
+    Get index map and convert relative coordinates to screen coordinates.
+
+    Args:
+        agent: The agent instance.
+        index_captcha_area: Index of the CAPTCHA area.
+        rel: Relative coordinates.
+
+    Returns:
+        Tuple of (screen_points, error_response). If error occurs, screen_points is None.
+    """
+    index_map, err = vc.get_index_map(agent)
+    if err is not None:
+        return None, err
+    screen_points = _relative_to_screen(index_map, index_captcha_area, rel)
+    return screen_points, None
+
+
 def _do_type(
     tool: "CaptchaVerifyTool",
     args: Dict[str, Any],
@@ -263,14 +281,9 @@ def _do_type(
         index_input_area = int(index_input_area)
     except (TypeError, ValueError):
         return Response(message="index_captcha_area and index_input_area must be integers.", break_loop=False)
-    b64, err = _crop_captcha_and_encode(tool.agent, index_captcha_area)
+    answer, err = _extract_and_solve_captcha(tool.agent, index_captcha_area, remark)
     if err is not None:
         return err
-    _captcha_log(tool.agent, "CAPTCHA recognizing…")
-    answer, err = _upload_and_query(tool.agent, b64, remark)
-    if err is not None:
-        return err
-    _captcha_log(tool.agent, "CAPTCHA solved")
     index_map, err = vc.get_index_map(tool.agent)
     if err is not None:
         return err
@@ -302,45 +315,38 @@ def _do_click(
         index_captcha_area = int(index_captcha_area)
     except (TypeError, ValueError):
         return Response(message="index_captcha_area must be integer.", break_loop=False)
-    b64, err = _crop_captcha_and_encode(tool.agent, index_captcha_area)
+    answer, err = _extract_and_solve_captcha(tool.agent, index_captcha_area, remark)
     if err is not None:
         return err
-    _captcha_log(tool.agent, "CAPTCHA recognizing…")
-    answer, err = _upload_and_query(tool.agent, b64, remark)
-    if err is not None:
-        return err
-    _captcha_log(tool.agent, "CAPTCHA solved")
     rel = _parse_coords_result(answer)
     if not rel:
         return Response(message="No coordinates in answer.", break_loop=False)
-    index_map, err = vc.get_index_map(tool.agent)
+    screen_points, err = _get_screen_points(tool.agent, index_captcha_area, rel)
     if err is not None:
         return err
-    screen_points = _relative_to_screen(index_map, index_captcha_area, rel)
     _captcha_log(tool.agent, "Human-like moves")
-    import pyautogui
     actions = ActionTools(dry_run=False, paste_key=["command", "v"] if platform.system() == "Darwin" else ["ctrl", "v"])
     for i, target in enumerate(screen_points):
         # Random pause before each move (human-like pacing)
-        time.sleep(PRE_MOVE_DELAY_MIN + random.random() * (PRE_MOVE_DELAY_MAX - PRE_MOVE_DELAY_MIN))
-        current = pyautogui.position()
-        path_pts = mouse_path.mouse_path(
-            [current[0], current[1]],
-            target,
-            num_points=BEZIER_POINTS,
-            curvature=MOUSE_PATH_CURVATURE,
-            bend_sign=MOUSE_PATH_BEND_SIGN,
-            control_jitter_px=MOUSE_PATH_CONTROL_JITTER_PX,
-        )
+        pre_delay = PRE_MOVE_DELAY_MIN + random.random() * (PRE_MOVE_DELAY_MAX - PRE_MOVE_DELAY_MIN)
         # Move duration; intervals from CompositeMove (ease-out + time noise)
         total_time = MOVE_TOTAL_TIME_MIN + random.random() * (MOVE_TOTAL_TIME_MAX - MOVE_TOTAL_TIME_MIN)
-        p, iv = _CAPTCHA_MOVE_COMPOSITE.plan(path_pts, total_time=total_time)
-        _apply_mouse_plan(p, iv)
-        actions._click(target)
 
-        if i < len(screen_points) - 1:
-            jitter_radius_px = int(PRE_REAL_MOVE_JITTER_RADIUS_PX / (i + 1))
-            _mouse_jitter_near_cursor(jitter_radius_px)
+        options = MoveOptions(
+            duration=total_time,
+            duration_mode=MoveOptions.DURATION_MODE_TOTAL,
+            pre_delay=pre_delay,
+            pre_jitter=True,
+            pre_jitter_radius_px=int(PRE_REAL_MOVE_JITTER_RADIUS_PX / (i + 1)),
+            pre_jitter_steps=PRE_REAL_MOVE_JITTER_STEPS,
+            pre_jitter_sleep_min=PRE_REAL_MOVE_JITTER_SLEEP_MIN,
+            pre_jitter_sleep_max=PRE_REAL_MOVE_JITTER_SLEEP_MAX,
+            path_jitter=True,
+            path_jitter_max_px=PATH_JITTER_PX,
+        )
+        _CAPTCHA_MOUSE_MOVE.move_to_point(target, options=options)
+        # Click is handled externally
+        actions._click(target)
     _captcha_log(tool.agent, "Done")
     return Response(
         message=f"Goal: {goal}. Clicked {len(screen_points)} point(s). Verify on next screenshot.",
@@ -361,21 +367,16 @@ def _do_drag(
         index_captcha_area = int(index_captcha_area)
     except (TypeError, ValueError):
         return Response(message="index_captcha_area must be integer.", break_loop=False)
-    b64, err = _crop_captcha_and_encode(tool.agent, index_captcha_area)
+    answer, err = _extract_and_solve_captcha(tool.agent, index_captcha_area, remark)
     if err is not None:
         return err
-    _captcha_log(tool.agent, "CAPTCHA recognizing…")
-    answer, err = _upload_and_query(tool.agent, b64, remark)
-    if err is not None:
-        return err
-    _captcha_log(tool.agent, "CAPTCHA solved")
     rel = _parse_coords_result(answer)
     if len(rel) < 2:
         return Response(message="Drag requires at least 2 coordinates in answer.", break_loop=False)
-    index_map, err = vc.get_index_map(tool.agent)
+    screen_points, err = _get_screen_points(tool.agent, index_captcha_area, rel)
     if err is not None:
         return err
-    screen_points = _relative_to_screen(index_map, index_captcha_area, rel)
+
     is_slider = bool(args.get("is_slider"))
     if is_slider and screen_points:
         from python.helpers import settings as _settings_mod
@@ -383,45 +384,29 @@ def _do_drag(
         screen_points = list(screen_points)
         screen_points[-1] = [int(screen_points[-1][0]) + offset_px, int(screen_points[-1][1])]
     _captcha_log(tool.agent, "Human-like drag")
-    # Chain points into one Bezier path; slider adds jitter + eased duration for backend checks
-    full_path = mouse_path.mouse_path_through_points(
-        [[float(p[0]), float(p[1])] for p in screen_points],
-        num_points_per_segment=BEZIER_POINTS,
-        curvature=MOUSE_PATH_CURVATURE,
-        bend_sign=MOUSE_PATH_BEND_SIGN,
-        control_jitter_px=MOUSE_PATH_CONTROL_JITTER_PX,
-    )
-    if not full_path:
-        return Response(message="Path generation failed.", break_loop=False)
-    import pyautogui
-    time.sleep(PRE_MOVE_DELAY_MIN + random.random() * (PRE_MOVE_DELAY_MAX - PRE_MOVE_DELAY_MIN))
-    current = pyautogui.position()
-    to_start = mouse_path.mouse_path(
-        [current[0], current[1]],
-        [full_path[0][0], full_path[0][1]],
-        num_points=BEZIER_POINTS,
-        curvature=MOUSE_PATH_CURVATURE,
-        bend_sign=MOUSE_PATH_BEND_SIGN,
-        control_jitter_px=MOUSE_PATH_CONTROL_JITTER_PX,
-    )
+
+    # Move to start position with pre-delay
+    pre_delay = PRE_MOVE_DELAY_MIN + random.random() * (PRE_MOVE_DELAY_MAX - PRE_MOVE_DELAY_MIN)
     total_time = MOVE_TOTAL_TIME_MIN + random.random() * (MOVE_TOTAL_TIME_MAX - MOVE_TOTAL_TIME_MIN)
-    p0, iv0 = _CAPTCHA_MOVE_COMPOSITE.plan(to_start, total_time=total_time)
-    _apply_mouse_plan(p0, iv0)
-    
+
+    options_to_start = MoveOptions(
+        duration=total_time,
+        duration_mode=MoveOptions.DURATION_MODE_TOTAL,
+        pre_delay=pre_delay,
+    )
+    _CAPTCHA_MOUSE_MOVE.move_to_point(screen_points[0], options=options_to_start)
+
+    # Drag movement - mouse button operations are handled externally
     pyautogui.mouseDown()
     time.sleep(0.05)
-    if is_slider:
-        slider_time = SLIDER_TOTAL_TIME_MIN + random.random() * (SLIDER_TOTAL_TIME_MAX - SLIDER_TOTAL_TIME_MIN)
-        ps, ivs = _CAPTCHA_MOVE_SLIDER.plan(
-            full_path[1:],
-            total_time=slider_time,
-            ease_in_out=True,
-            perturb_intervals=True,
-        )
-        _apply_mouse_plan(ps, ivs)
-    else:
-        pd, ivd = _CAPTCHA_MOVE_SIMPLE.plan(full_path[1:], interval=DRAG_MOVE_INTERVAL)
-        _apply_mouse_plan(pd, ivd)
+    # All drags use slider-style movement (total time with perturbation and ease-in-out)
+    slider_time = SLIDER_TOTAL_TIME_MIN + random.random() * (SLIDER_TOTAL_TIME_MAX - SLIDER_TOTAL_TIME_MIN)
+    options_drag = MoveOptions(
+        duration=slider_time,
+        duration_mode=MoveOptions.DURATION_MODE_TOTAL_PERTURB,
+        ease_in_out=True,
+    )
+    _CAPTCHA_MOUSE_MOVE.move_through_points(screen_points, options=options_drag)
     time.sleep(0.05)
     pyautogui.mouseUp()
     time.sleep(0.1)

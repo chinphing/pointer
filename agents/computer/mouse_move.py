@@ -1,20 +1,27 @@
 """
-Mouse movement planning: only produces processed coordinate paths and per-step dwell times;
-does not call low-level pointer APIs (caller uses moveTo/sleep, etc.).
-Path sampling: `mouse_path` Bézier / `mouse_path_spline` cubic spline; timing is implemented by Move subclasses.
+Mouse movement planning and execution.
+Provides high-level MouseMove class for external use.
+Path generation uses Bézier curves; timing supports ease-out and ease-in-out.
 """
 from __future__ import annotations
 
 import math
 import random
-from abc import ABC, abstractmethod
-from typing import List, Optional, Tuple
+import time
+from typing import Any, Final, List, Optional, Tuple
 
 import mouse_path as _mouse_path
 
 
-def ease_out_intervals(n: int, total_time: float) -> List[float]:
-    """Ease-out: `n` intervals (seconds) sum to `total_time`."""
+# Default jitter configuration constants
+DEFAULT_JITTER_STEPS: Final[int] = 3
+DEFAULT_JITTER_RADIUS_PX: Final[int] = 10
+DEFAULT_JITTER_SLEEP_MIN: Final[float] = 0.2
+DEFAULT_JITTER_SLEEP_MAX: Final[float] = 0.5
+
+
+def _ease_out_intervals(n: int, total_time: float) -> List[float]:
+    """Ease-out: `n` intervals (seconds) sum to `total_time`. Internal function."""
     if n <= 0:
         return []
     if n == 1:
@@ -29,8 +36,8 @@ def ease_out_intervals(n: int, total_time: float) -> List[float]:
     return intervals
 
 
-def ease_in_out_intervals(n: int, total_time: float) -> List[float]:
-    """Ease-in-out: slow start/end, faster middle."""
+def _ease_in_out_intervals(n: int, total_time: float) -> List[float]:
+    """Ease-in-out: slow start/end, faster middle. Internal function."""
     if n <= 0:
         return []
     if n == 1:
@@ -51,13 +58,13 @@ def ease_in_out_intervals(n: int, total_time: float) -> List[float]:
     return intervals
 
 
-def add_path_jitter(
+def _add_path_jitter(
     points: List[Tuple[float, float]],
     max_px: float,
     *,
     skip_first_last: bool = True,
 ) -> List[Tuple[float, float]]:
-    """Random normal jitter on interior path points; if max_px<=0 return unchanged."""
+    """Random normal jitter on interior path points; if max_px<=0 return unchanged. Internal function."""
     if not points or max_px <= 0:
         return points
     n = len(points)
@@ -86,8 +93,8 @@ def add_path_jitter(
     return out
 
 
-def spread_interval_perturbation(intervals: List[float], factor: float) -> List[float]:
-    """Random multiplicative perturbation per interval; total sum preserved."""
+def _spread_interval_perturbation(intervals: List[float], factor: float) -> List[float]:
+    """Random multiplicative perturbation per interval; total sum preserved. Internal function."""
     if not intervals or factor <= 0:
         return intervals
     total = sum(intervals)
@@ -99,189 +106,305 @@ def spread_interval_perturbation(intervals: List[float], factor: float) -> List[
     return [p * scale for p in perturbed]
 
 
-class BaseMove(ABC):
-    """Subclasses implement path post-processing and per-step intervals; `plan` returns (path, intervals)."""
-
-    default_interval: float = 0.03
-
-    @abstractmethod
-    def postprocess_path(self, points: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
-        """Transform sampled points (e.g. jitter); return original or copy if no-op."""
-
-    @abstractmethod
-    def intervals_for_steps(
-        self,
-        num_steps: int,
-        *,
-        interval: Optional[float],
-        total_time: Optional[float],
-        ease_in_out: bool,
-        perturb_intervals: bool,
-    ) -> List[float]:
-        """Sleep duration (seconds) after reaching each path point; same length as path."""
-
-    def plan(
-        self,
-        points: List[Tuple[float, float]],
-        *,
-        interval: Optional[float] = None,
-        total_time: Optional[float] = None,
-        ease_in_out: bool = False,
-        perturb_intervals: bool = True,
-    ) -> Tuple[List[Tuple[float, float]], List[float]]:
-        """Return (processed path, per-step intervals). Empty input → ([], [])."""
-        if not points:
-            return [], []
-        path = self.postprocess_path(points)
-        n = len(path)
-        intervals = self.intervals_for_steps(
-            n,
-            interval=interval,
-            total_time=total_time,
-            ease_in_out=ease_in_out,
-            perturb_intervals=perturb_intervals,
-        )
-        if len(intervals) != n:
-            raise RuntimeError(f"intervals length {len(intervals)} != path length {n}")
-        return path, intervals
-
-
-class SimpleMove(BaseMove):
+def _mouse_jitter_near_cursor(
+    jitter_radius_px: int = DEFAULT_JITTER_RADIUS_PX,
+    steps: int = DEFAULT_JITTER_STEPS,
+    sleep_min: float = DEFAULT_JITTER_SLEEP_MIN,
+    sleep_max: float = DEFAULT_JITTER_SLEEP_MAX,
+    move_to_func: Optional[Any] = None,
+) -> None:
     """
-    Between two points use `mouse_path_spline` (same control points as `mouse_path`).
-    Bend: same `curvature` / `bend_sign` / `bend_pixels` / `control_jitter_px` as `mouse_path_spline`.
+    Move to random points within ±jitter_radius_px of cursor (no eased path). Internal function.
+
+    Args:
+        jitter_radius_px: Maximum distance from current cursor position.
+        steps: Number of jitter movements to perform.
+        sleep_min: Minimum sleep time between movements (seconds).
+        sleep_max: Maximum sleep time between movements (seconds).
+        move_to_func: Optional custom move function. If None, uses pyautogui.moveTo.
     """
+    import pyautogui
 
-    def __init__(
-        self,
-        default_interval: float = 0.03,
-        num_points: int = 10,
-        *,
-        curvature: float = 1.0,
-        bend_sign: Optional[int] = None,
-        bend_pixels: Optional[float] = None,
-        control_jitter_px: Optional[float] = None,
-    ):
-        self.default_interval = default_interval
-        self.num_points = num_points
-        self.curvature = curvature
-        self.bend_sign = bend_sign
-        self.bend_pixels = bend_pixels
-        self.control_jitter_px = control_jitter_px
+    if move_to_func is None:
+        move_to_func = pyautogui.moveTo
 
-    def path_between(
-        self,
-        point_from: List[float],
-        point_to: List[float],
-        num_points: Optional[int] = None,
-        *,
-        curvature: Optional[float] = None,
-        bend_sign: Optional[int] = None,
-        bend_pixels: Optional[float] = None,
-        control_jitter_px: Optional[float] = None,
-    ) -> List[Tuple[float, float]]:
-        n = num_points if num_points is not None else self.num_points
-        return _mouse_path.mouse_path_spline(
-            point_from,
-            point_to,
-            num_points=n,
-            curvature=self.curvature if curvature is None else curvature,
-            bend_sign=self.bend_sign if bend_sign is None else bend_sign,
-            bend_pixels=self.bend_pixels if bend_pixels is None else bend_pixels,
-            control_jitter_px=self.control_jitter_px if control_jitter_px is None else control_jitter_px,
-        )
+    screen_width, screen_height = pyautogui.size()
+    current_x, current_y = (int(pyautogui.position()[0]), int(pyautogui.position()[1]))
 
-    def plan_segment(
-        self,
-        point_from: List[float],
-        point_to: List[float],
-        *,
-        num_points: Optional[int] = None,
-        interval: Optional[float] = None,
-        total_time: Optional[float] = None,
-        ease_in_out: bool = False,
-        perturb_intervals: bool = True,
-        curvature: Optional[float] = None,
-        bend_sign: Optional[int] = None,
-        bend_pixels: Optional[float] = None,
-        control_jitter_px: Optional[float] = None,
-    ) -> Tuple[List[Tuple[float, float]], List[float]]:
-        pts = self.path_between(
-            point_from,
-            point_to,
-            num_points=num_points,
-            curvature=curvature,
-            bend_sign=bend_sign,
-            bend_pixels=bend_pixels,
-            control_jitter_px=control_jitter_px,
-        )
-        return self.plan(
-            pts,
-            interval=interval,
-            total_time=total_time,
-            ease_in_out=ease_in_out,
-            perturb_intervals=perturb_intervals,
-        )
-
-    def postprocess_path(self, points: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
-        return points
-
-    def intervals_for_steps(
-        self,
-        num_steps: int,
-        *,
-        interval: Optional[float],
-        total_time: Optional[float],
-        ease_in_out: bool,
-        perturb_intervals: bool,
-    ) -> List[float]:
-        if num_steps <= 0:
-            return []
-        if total_time is not None and total_time > 0:
-            t = total_time / num_steps
-            return [t] * num_steps
-        iv = interval if interval is not None else self.default_interval
-        return [iv] * num_steps
+    for _ in range(steps):
+        new_x = current_x + random.randint(-jitter_radius_px, jitter_radius_px)
+        new_y = current_y + random.randint(-jitter_radius_px, jitter_radius_px)
+        new_x = max(0, min(screen_width - 1, new_x))
+        new_y = max(0, min(screen_height - 1, new_y))
+        move_to_func(new_x, new_y)
+        time.sleep(random.uniform(sleep_min, sleep_max))
 
 
-class CompositeMove(BaseMove):
-    """Bézier path + optional normal jitter; total-time mode uses ease-out / ease-in-out with interval perturbation."""
+class MoveOptions:
+    """Options for mouse movement execution."""
+
+    # Duration mode constants
+    DURATION_MODE_STEP = "step"  # duration is time per step
+    DURATION_MODE_TOTAL = "total"  # duration is total time for entire move
+    DURATION_MODE_TOTAL_PERTURB = "total_perturb"  # total time with interval perturbation
 
     def __init__(
         self,
         *,
-        path_jitter_max_px: float = 2.0,
-        default_interval: float = 0.03,
+        duration: float = 0.03,
+        duration_mode: str = DURATION_MODE_STEP,
+        ease_in_out: bool = False,
         interval_perturb_factor: float = 0.2,
+        pre_delay: float = 0.0,
+        post_delay: float = 0.0,
+        pre_jitter: bool = False,
+        pre_jitter_radius_px: int = DEFAULT_JITTER_RADIUS_PX,
+        pre_jitter_steps: int = DEFAULT_JITTER_STEPS,
+        pre_jitter_sleep_min: float = DEFAULT_JITTER_SLEEP_MIN,
+        pre_jitter_sleep_max: float = DEFAULT_JITTER_SLEEP_MAX,
+        path_jitter: bool = False,
+        path_jitter_max_px: float = 2.0,
     ):
-        self.path_jitter_max_px = path_jitter_max_px
-        self.default_interval = default_interval
+        """
+        Initialize move options.
+
+        Args:
+            duration: Time duration in seconds.
+                If duration_mode is "step", this is the interval between each move (default: 0.03).
+                If duration_mode is "total", this is the total time for the entire move.
+                If duration_mode is "total_perturb", same as "total" but with interval perturbation.
+            duration_mode: "step" (default), "total", or "total_perturb".
+            ease_in_out: Whether to use ease-in-out timing. Only applies with duration_mode="total" or "total_perturb".
+            interval_perturb_factor: Factor for interval perturbation in DURATION_MODE_TOTAL_PERTURB.
+            pre_delay: Delay before starting the move (seconds).
+            post_delay: Delay after completing the move (seconds).
+            pre_jitter: Whether to perform jitter movements before starting the move.
+            pre_jitter_radius_px: Radius for pre-move jitter (pixels).
+            pre_jitter_steps: Number of pre-move jitter movements.
+            pre_jitter_sleep_min: Minimum sleep between pre-move jitter (seconds).
+            pre_jitter_sleep_max: Maximum sleep between pre-move jitter (seconds).
+            path_jitter: Whether to add jitter to the path points.
+            path_jitter_max_px: Maximum jitter for path points (pixels).
+
+        Note:
+            Mouse button operations (mouse_down, mouse_up, click) should be handled
+            externally by the caller, not by this class.
+        """
+        valid_modes = (
+            self.DURATION_MODE_STEP,
+            self.DURATION_MODE_TOTAL,
+            self.DURATION_MODE_TOTAL_PERTURB,
+        )
+        if duration_mode not in valid_modes:
+            raise ValueError(f"duration_mode must be one of {valid_modes}")
+
+        self.duration = duration
+        self.duration_mode = duration_mode
+        self.ease_in_out = ease_in_out
         self.interval_perturb_factor = interval_perturb_factor
+        self.pre_delay = pre_delay
+        self.post_delay = post_delay
+        self.pre_jitter = pre_jitter
+        self.pre_jitter_radius_px = pre_jitter_radius_px
+        self.pre_jitter_steps = pre_jitter_steps
+        self.pre_jitter_sleep_min = pre_jitter_sleep_min
+        self.pre_jitter_sleep_max = pre_jitter_sleep_max
+        self.path_jitter = path_jitter
+        self.path_jitter_max_px = path_jitter_max_px
 
-    def postprocess_path(self, points: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
-        if self.path_jitter_max_px <= 0:
-            return points
-        return add_path_jitter(points, self.path_jitter_max_px, skip_first_last=True)
 
-    def intervals_for_steps(
+class MouseMove:
+    """
+    High-level mouse movement interface.
+    Encapsulates path generation and movement execution.
+    External code should only use this class for mouse movement.
+    """
+
+    def __init__(
+        self,
+        *,
+        spline_num_points: int = 10,
+        spline_curvature: float = 1.0,
+        spline_bend_sign: Optional[int] = None,
+        spline_control_jitter_px: float = 2.0,
+    ):
+        """
+        Initialize MouseMove with configuration.
+
+        Args:
+            spline_num_points: Number of points per path segment.
+            spline_curvature: Path curvature (0=straight, 1=default).
+            spline_bend_sign: Bend direction (+1/-1/None for random).
+            spline_control_jitter_px: Control point jitter in pixels.
+        """
+        self._spline_num_points = spline_num_points
+        self._spline_curvature = spline_curvature
+        self._spline_bend_sign = spline_bend_sign
+        self._spline_control_jitter_px = spline_control_jitter_px
+
+    def _generate_path(
+        self,
+        point_from: List[float],
+        point_to: List[float],
+        options: MoveOptions,
+    ) -> List[Tuple[float, float]]:
+        """
+        Generate path between two points using mouse_path_spline.
+        Applies path jitter if enabled in options.
+
+        Args:
+            point_from: Starting point [x, y].
+            point_to: Target point [x, y].
+            options: MoveOptions containing path configuration.
+
+        Returns:
+            List of path points as (x, y) tuples.
+        """
+        path = _mouse_path.mouse_path_spline(
+            point_from,
+            point_to,
+            num_points=self._spline_num_points,
+            curvature=self._spline_curvature,
+            bend_sign=self._spline_bend_sign,
+            control_jitter_px=self._spline_control_jitter_px,
+        )
+
+        # Apply path jitter if requested
+        if options.path_jitter:
+            path = _add_path_jitter(path, options.path_jitter_max_px)
+
+        return path
+
+    def _calculate_intervals(
         self,
         num_steps: int,
-        *,
-        interval: Optional[float],
-        total_time: Optional[float],
-        ease_in_out: bool,
-        perturb_intervals: bool,
+        options: MoveOptions,
     ) -> List[float]:
+        """
+        Calculate time intervals for each movement step.
+
+        Args:
+            num_steps: Number of steps in the path.
+            options: MoveOptions containing duration configuration.
+
+        Returns:
+            List of interval times in seconds for each step.
+        """
         if num_steps <= 0:
             return []
-        if total_time is not None and total_time > 0:
+
+        if options.duration_mode in (MoveOptions.DURATION_MODE_TOTAL, MoveOptions.DURATION_MODE_TOTAL_PERTURB):
+            # Total time mode: calculate intervals to fit within total duration
             intervals = (
-                ease_in_out_intervals(num_steps, total_time)
-                if ease_in_out
-                else ease_out_intervals(num_steps, total_time)
+                _ease_in_out_intervals(num_steps, options.duration)
+                if options.ease_in_out
+                else _ease_out_intervals(num_steps, options.duration)
             )
-            if perturb_intervals:
-                intervals = spread_interval_perturbation(intervals, self.interval_perturb_factor)
+            # Apply perturbation if requested
+            if options.duration_mode == MoveOptions.DURATION_MODE_TOTAL_PERTURB:
+                intervals = _spread_interval_perturbation(intervals, options.interval_perturb_factor)
             return intervals
-        iv = interval if interval is not None else self.default_interval
-        return [iv] * num_steps
+        else:
+            # Step mode: fixed interval per step
+            return [options.duration] * num_steps
+
+    def _execute_move(
+        self,
+        path: List[Tuple[float, float]],
+        options: MoveOptions,
+        move_to_func: Optional[Any] = None,
+    ) -> None:
+        """Execute the actual mouse movement. Internal method."""
+        import pyautogui
+
+        if move_to_func is None:
+            move_to_func = pyautogui.moveTo
+
+        # Pre-delay
+        if options.pre_delay > 0:
+            time.sleep(options.pre_delay)
+
+        # Pre-move jitter (at current cursor position)
+        if options.pre_jitter:
+            _mouse_jitter_near_cursor(
+                jitter_radius_px=options.pre_jitter_radius_px,
+                steps=options.pre_jitter_steps,
+                sleep_min=options.pre_jitter_sleep_min,
+                sleep_max=options.pre_jitter_sleep_max,
+                move_to_func=move_to_func,
+            )
+
+        # Calculate and execute movement
+        intervals = self._calculate_intervals(len(path), options)
+
+        for (x, y), dt in zip(path, intervals):
+            move_to_func(int(round(x)), int(round(y)))
+            time.sleep(dt)
+
+        # Post-delay
+        if options.post_delay > 0:
+            time.sleep(options.post_delay)
+
+    def move_to_point(
+        self,
+        point_to: List[float],
+        options: Optional[MoveOptions] = None,
+        move_to_func: Optional[Any] = None,
+    ) -> None:
+        """
+        Move from current position to target point.
+
+        Args:
+            point_to: Target point [x, y].
+            options: MoveOptions for movement behavior.
+            move_to_func: Optional custom move function.
+        """
+        if options is None:
+            options = MoveOptions()
+
+        import pyautogui
+
+        current = pyautogui.position()
+        path = self._generate_path([current[0], current[1]], point_to, options)
+        self._execute_move(path, options, move_to_func)
+
+    def move_through_points(
+        self,
+        points: List[List[float]],
+        options: Optional[MoveOptions] = None,
+        move_to_func: Optional[Any] = None,
+    ) -> None:
+        """
+        Move through a series of points using Bezier path.
+        Implemented by calling move_to_point for each segment.
+
+        Args:
+            points: List of points [[x1, y1], [x2, y2], ...].
+            options: MoveOptions for movement behavior.
+            move_to_func: Optional custom move function.
+        """
+        if not points:
+            raise ValueError("points cannot be empty")
+
+        if options is None:
+            options = MoveOptions()
+
+        # Move through each point sequentially
+        # Only apply pre_delay and pre_jitter for the first point, post_delay for the last point
+        # path_jitter is applied to all segments
+        for i, point in enumerate(points):
+            segment_options = MoveOptions(
+                duration=options.duration,
+                duration_mode=options.duration_mode,
+                ease_in_out=options.ease_in_out,
+                pre_delay=options.pre_delay if i == 0 else 0.0,
+                post_delay=options.post_delay if i == len(points) - 1 else 0.0,
+                pre_jitter=options.pre_jitter if i == 0 else False,
+                pre_jitter_radius_px=options.pre_jitter_radius_px,
+                pre_jitter_steps=options.pre_jitter_steps,
+                pre_jitter_sleep_min=options.pre_jitter_sleep_min,
+                pre_jitter_sleep_max=options.pre_jitter_sleep_max,
+                path_jitter=options.path_jitter,
+                path_jitter_max_px=options.path_jitter_max_px,
+            )
+            self.move_to_point(point, options=segment_options, move_to_func=move_to_func)

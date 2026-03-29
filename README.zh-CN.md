@@ -34,7 +34,8 @@ Pointer 以 **Agent Zero 配置（`computer`）** 运行，因此工具编排、
 - 需要**视觉 + 推理 + 长程规划**的重复人机任务  
 
 **视频演示：**  
--  [7类21种场景验证码验证](https://bilibili.com/video/BV1S6X4BsEjN/) 
+-  [7类21种场景验证码验证](https://bilibili.com/video/BV1S6X4BsEjN/)
+-  [当我花一个小时教会纯视觉Agent自动购买阿里云服务器之后，我要对“CLI一切”说不！](https://youtu.be/zWOtxBAZ5GQ)
 
 **在线体验 / 试点：**  
 试用、演示或合作请联系 **starphinliu@gmail.com**。

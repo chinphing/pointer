@@ -73,9 +73,16 @@ class RawAction:
         stop_event=None,
     ):
         self.dry_run = dry_run
-        self.paste_key = paste_key or ["command", "v"]
+        self.paste_key = paste_key
         self.last_action = None
         self.stop_event = stop_event
+        
+        if self.paste_key is None:
+            system = platform.system()
+            if system == "Darwin":
+                self.paste_key = ["command", "v"]
+            else:
+                self.paste_key = ["ctrl", "v"]
 
         self.mouse = MouseController()
 
